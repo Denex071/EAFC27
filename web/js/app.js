@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.1.3";
+const VERSION = "1.1.4";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -143,7 +143,7 @@ function download(name, text) {
 }
 function calcHtml(ek, vk) {
   if (!ek) return "";
-  if (!vk) return `<div class="calc"><div class="l"><span>Kalk. VK (Ziel)</span><span class="num">${fmt(target(ek))}</span></div>
+  if (!vk) return `<div class="calc"><div class="l"><span>kalk. VK</span><span class="num">${fmt(target(ek))}</span></div>
     <div class="l"><span>Break-even nach Tax</span><span class="num">${fmt(breakEven(ek))}</span></div></div>`;
   const p = profitOf(ek, vk);
   return `<div class="calc"><div class="l"><span>Verkaufspreis</span><span class="num">${fmt(vk)}</span></div>
@@ -161,7 +161,7 @@ function genCode() {
 function renderOnboarding() {
   root.innerHTML = `<div class="onb">
     <h1>FC Trader</h1>
-    <p class="lead">Käufe und Verkäufe gemeinsam tracken – Gewinn, Ziel-VK und Vermögen immer im Blick.</p>
+    <p class="lead">Käufe und Verkäufe gemeinsam tracken – Gewinn, kalk. VK und Vermögen immer im Blick.</p>
     ${CLOUD ? "" : `<div class="banner">Die Cloud ist noch nicht eingerichtet. Du kannst die App im Demo-Modus ausprobieren; Daten bleiben dann nur in diesem Browser.</div>`}
     <div class="group"><div class="field"><label for="o-name">Dein Name</label><input id="o-name" value="${esc(settings.name)}" placeholder="z. B. Denis" autocomplete="given-name"></div></div>
     <button class="primary" id="o-new" ${CLOUD ? "" : "disabled"}>Neues Depot erstellen</button>
@@ -222,7 +222,7 @@ function renderShell() {
 function render() {
   const view = document.getElementById("view");
   if (!view) return;
-  document.getElementById("title").textContent = TITLES[ui.tab];
+  document.getElementById("title").textContent = ui.tab === "dash" ? "EA FC 27 Trading" : TITLES[ui.tab];
   root.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false"));
   const badge = root.querySelector('[data-badge="buy"]');
   const openBuys = restockOpen().length;
@@ -266,7 +266,7 @@ function dashHtml() {
     ${s.best ? `<section class="card"><h2>Top &amp; Flop</h2>${flip(s.best, "Bester Verkauf")}${s.worst ? '<div class="divider"></div>' + flip(s.worst, "Schwächster Verkauf") : ""}</section>` : ""}
     ${s.longest.length ? `<section class="card"><h2>Am längsten im Club</h2>${s.longest.map(c => `
       <div class="row">${badge(c.rating, 1)}<div class="grow"><div class="name">${esc(c.name)}</div>
-      <div class="meta">seit ${heldSince(c.ekDate)} · Ziel ${fmt(target(c.ek))} · BE ${fmt(breakEven(c.ek))}</div></div>
+      <div class="meta">seit ${heldSince(c.ekDate)} · kalk. VK ${fmt(target(c.ek))} · BE ${fmt(breakEven(c.ek))}</div></div>
       <button class="mini gold" data-sell="${c.id}">Verkaufen</button></div>`).join("")}</section>` : ""}`;
 }
 const flip = (f, label) => `<div class="row">${badge(f.c.rating, 1)}<div class="grow"><div class="meta">${label}</div><div class="name">${esc(f.c.name)}</div></div>${profitHtml(f.p)}</div>`;
@@ -303,7 +303,7 @@ function listHtml() {
   list.sort((a, b) => key[ui.sort](a) - key[ui.sort](b));
   const shown = list.slice(0, 200);
   return `${seg([["open", `Offen (${counts.open})`], ["sold", `Verkauft (${counts.sold})`], ["all", `Alle (${counts.all})`]], ui.filter, "filter")}
-    <div class="search"><input id="q" type="search" placeholder="Spieler oder Chemiestil" value="${esc(ui.q)}" aria-label="Suchen">
+    <div class="search"><input id="q" type="search" placeholder="Spieler oder Chemistry Style" value="${esc(ui.q)}" aria-label="Suchen">
       <select id="sort" aria-label="Sortierung">${[["newest", "Neueste"], ["profit", "Gewinn"], ["rating", "Rating"], ["price", "Preis"], ["hold", "Haltedauer"]]
         .map(([k, l]) => `<option value="${k}" ${k === ui.sort ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     <div class="list">${shown.map(c => {
@@ -311,12 +311,12 @@ function listHtml() {
       return `<div class="item" tabindex="0" data-edit="${c.id}">${badge(c.rating)}
         <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(c.ekDate))}</div></div>
         <div class="right">${p != null ? `${profitHtml(p)}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div>`
-          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">Ziel ${compact(target(c.ek))} · ${heldSince(c.ekDate)}</div>`}</div>
+          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">kalk. VK ${compact(target(c.ek))} · ${heldSince(c.ekDate)}</div>`}</div>
         ${p == null ? `<button class="mini gold" data-sell="${c.id}">VK</button>` : ""}</div>`;
     }).join("") || '<div class="empty">Keine Spieler gefunden.</div>'}</div>
     ${list.length > shown.length ? `<div class="hint">Die ersten ${shown.length} von ${list.length}. Suche oder Filter grenzt weiter ein.</div>` : ""}
     ${list.length ? `<div class="sumbar"><span>${list.length} Spieler</span><span class="num">${ui.filter === "open"
-      ? `EK ${compact(sum(list.map(c => c.ek)))} · Ziel ${compact(sum(list.map(c => target(c.ek))))}`
+      ? `EK ${compact(sum(list.map(c => c.ek)))} · kalk. VK ${compact(sum(list.map(c => target(c.ek))))}`
       : `Gewinn ${profitHtml(sum(list.filter(isSold).map(c => profitOf(c.ek, c.vk))))}`}</span></div>` : ""}`;
 }
 function bindListInputs() {
@@ -328,7 +328,7 @@ function bindListInputs() {
 function buyHtml() {
   const groups = restockGroups();
   if (!groups.length) return `<section class="card"><h2>Alles nachgekauft</h2>
-    <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemiestil und letztem EK – zum Nachkaufen.</p></section>`;
+    <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.</p></section>`;
   const count = sum(groups.map(g => g.items.length));
   const budget = sum(groups.map(g => g.lastEk * g.items.length));
   return `<section class="tiles">
@@ -355,7 +355,7 @@ function openBuy(key) {
       <div class="chips"><button type="button" class="chip" data-d="-1">− Stufe</button><button type="button" class="chip" data-d="1">+ Stufe</button>
         <button type="button" class="chip" data-d="0">Letzter EK</button><button type="button" class="chip" data-app="000">+000</button></div>
       ${g.items.length > 1 ? `<div class="field"><label for="k-qty">Anzahl</label><select id="k-qty">${g.items.map((_, i) => `<option ${i === 0 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}
-      <div class="field"><label for="k-chem">Chemiestil</label><select id="k-chem">${chemOptions(g.chem)}</select></div>
+      <div class="field"><label for="k-chem">Chemistry Style</label><select id="k-chem">${chemOptions(g.chem)}</select></div>
       <div class="field"><label for="k-date">Kaufdatum</label><input id="k-date" type="date" value="${toISODate(new Date())}"></div>
       <div id="k-calc"></div></div></div>`;
   const qty = () => $("k-qty") ? +$("k-qty").value : 1;
@@ -421,7 +421,7 @@ function moreHtml() {
     <section class="card" style="padding:0;gap:0"><h2 style="padding:14px 14px 8px">Kalk. VK – Aufschlag auf den EK</h2>
       <div style="overflow-x:auto"><table class="tiers num">${TIERS.map((t, i) => `<tr><td>${fmt(i ? TIERS[i - 1][0] + 1 : 0)} – ${fmt(t[0])}</td><td>+ ${fmt(t[1])}</td></tr>`).join("")}
       <tr><td>ab ${fmt(TIERS[TIERS.length - 1][0] + 1)}</td><td>+ ${fmt(MARKUP_ABOVE)}</td></tr></table></div></section>
-    <section class="card"><h2>Chemiestile</h2><p class="meta" style="white-space:normal;margin:0">${STYLES.join(" · ")}</p>
+    <section class="card"><h2>Chemistry Styles</h2><p class="meta" style="white-space:normal;margin:0">${STYLES.join(" · ")}</p>
       <p class="meta" style="white-space:normal;margin:0">${S.data.icons.length} vom Nutzer gelernte Symbole</p></section>
     <p class="hint">FC Trader ${VERSION} · ${demo ? "Demo" : "Cloud"}</p>`;
 }
@@ -485,7 +485,7 @@ function openAdd(existing) {
       <div class="field"><label for="f-name">Name</label><input id="f-name" value="${esc(c.name)}" placeholder="z. B. Musiala"></div>
       <div class="chips" id="sugg" hidden></div>
       <div class="field"><label for="f-rating">Rating</label><input id="f-rating" inputmode="numeric" value="${c.rating}" placeholder="z. B. 84"></div>
-      <div class="field"><label for="f-chem">Chemiestil</label><select id="f-chem">${chemOptions(c.chem)}</select></div>
+      <div class="field"><label for="f-chem">Chemistry Style</label><select id="f-chem">${chemOptions(c.chem)}</select></div>
       <div class="chips" id="rchem">${recentChems().map(s => `<button type="button" class="chip" data-chem="${s}">${s}</button>`).join("")}</div></div>
     <div class="group"><div class="gh">Kauf</div>
       <div class="field"><label for="f-ek">Einkaufspreis</label><input id="f-ek" inputmode="decimal" value="${c.ek}" placeholder="0"></div>
@@ -539,7 +539,7 @@ function openAdd(existing) {
 }
 
 function openSell(card, presetPrice) {
-  const chips = [["ziel", "Ziel " + compact(target(card.ek))], ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
+  const chips = [["ziel", "kalk. VK " + compact(target(card.ek))], ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
       <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · ${fmtDate(parseDay(card.ekDate))}</div></div></div></div>
@@ -548,7 +548,7 @@ function openSell(card, presetPrice) {
       <div class="chips">${chips.map(([k, l]) => `<button type="button" class="chip" data-m="${k}">${l}</button>`).join("")}<button type="button" class="chip" data-app="000">+000</button></div>
       <div class="field"><label for="s-date">Verkaufsdatum</label><input id="s-date" type="date" value="${toISODate(new Date())}"></div></div>
     <div class="group"><div class="gh">Abrechnung</div><div id="s-calc"></div></div>
-    <p class="hint">Ziel = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
+    <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
     S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()) });
@@ -687,17 +687,18 @@ function openBulkAdd(items) {
     ${d.dup ? `<div class="warn">Heute schon erfasst: ${esc(d.dup.name)} zu ${fmt(d.dup.ek)} – bitte prüfen.</div>` : ""}
     <div class="field"><label>Name</label><input data-k="name" value="${esc(d.name)}" list="known-names"></div>
     <div class="field"><label>Rating</label><input data-k="rating" inputmode="numeric" value="${d.rating}"></div>
-    <div class="field"><label>Chemiestil</label><select data-k="chem">${chemOptions(d.chem)}</select></div>
+    <div class="field"><label>Chemistry Style</label><select data-k="chem">${chemOptions(d.chem)}</select></div>
     ${d.bits ? (d.recognized && d.recognized === d.chem ? '<div class="ok">✓ Am Symbol auf der Karte erkannt</div>'
       : !d.recognized ? '<div class="warn">Symbol nicht sicher erkannt – bitte prüfen. Deine Auswahl wird gelernt.</div>' : "") : ""}
-    <div class="field"><label>Einkaufspreis</label><input data-k="price" inputmode="decimal" value="${d.price}"></div></div>`).join("");
+    <div class="field"><label>Einkaufspreis</label><input data-k="price" inputmode="decimal" value="${d.price}"></div>
+    <div data-calc>${calcHtml(parseCoins(d.price), null)}</div></div>`).join("");
   const valid = d => d.name.trim() && +d.rating >= 1 && +d.rating <= 99 && parseCoins(d.price) > 0;
   const ready = () => drafts.filter(d => d.include && valid(d));
   const body = `<div class="form">
     <div class="group"><div class="field"><label for="b-date">Kaufdatum</label><input id="b-date" type="date" value="${toISODate(new Date())}"></div></div>
     <div id="b-list">${draw()}</div>
     <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
-    <p class="hint">Chemiestil wird am Symbol erkannt. Ist das unsicher, ist der zuletzt genutzte Stil des Spielers vorbelegt.</p></div>`;
+    <p class="hint">Chemistry Style wird am Symbol erkannt. Ist das unsicher, ist der zuletzt genutzte Stil des Spielers vorbelegt.</p></div>`;
   const refresh = sheet(drafts.length === 1 ? "Kauf prüfen" : `${drafts.length} Käufe prüfen`, body, "Sichern", () => {
     const date = $("b-date").value || toISODate(new Date());
     let ticked = 0;
@@ -716,6 +717,7 @@ function openBulkAdd(items) {
     const d = drafts[+g.dataset.i];
     d[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     if (k === "name") { const l = lastCard(d.name); if (l && !d.rating) d.rating = l.rating; }
+    if (k === "price") g.querySelector("[data-calc]").innerHTML = calcHtml(parseCoins(d.price), null);
     refresh();
   });
   $("b-list").addEventListener("change", e => { if (e.target.dataset.k === "chem" || e.target.dataset.k === "include") { $("b-list").innerHTML = draw(); refresh(); } });
@@ -747,7 +749,7 @@ function openBulkSell(items) {
   const body = `<div class="form">
     <div class="group"><div class="field"><label for="v-date">Verkaufsdatum</label><input id="v-date" type="date" value="${toISODate(new Date())}"></div></div>
     <div id="v-list">${draw()}</div>
-    <p class="hint">Jeder Verkauf wird dem ältesten offenen Kauf dieses Spielers zugeordnet. Chemiestil und EK kommen aus dem Kauf.</p></div>`;
+    <p class="hint">Jeder Verkauf wird dem ältesten offenen Kauf dieses Spielers zugeordnet. Chemistry Style und EK kommen aus dem Kauf.</p></div>`;
   const refresh = sheet(drafts.length === 1 ? "Verkauf prüfen" : `${drafts.length} Verkäufe prüfen`, body, "Verbuchen", () => {
     const date = $("v-date").value || toISODate(new Date());
     let total = 0;

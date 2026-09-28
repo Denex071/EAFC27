@@ -51,16 +51,16 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 ## Funktionen
 
 ### Erfassung – so wenige Taps wie möglich
-- **Kauf erfassen** (+): Name, Rating, Chemiestil (Dropdown + zuletzt genutzte als Schnellauswahl),
+- **Kauf erfassen** (+): Name, Rating, Chemistry Style (Dropdown + zuletzt genutzte als Schnellauswahl),
   Einkaufspreis, Kaufdatum (heute vorausgefüllt), Notiz.
-- **Vorschläge beim Tippen**: bekannte Spieler füllen Rating und Chemiestil automatisch.
+- **Vorschläge beim Tippen**: bekannte Spieler füllen Rating und Chemistry Style automatisch.
 - **Preiseingabe**: `12500`, `12.500`, `12,5k` oder `1.2m`, dazu Schnelltasten `+000` und `k`.
 - **„Sichern & nächste Karte“** für mehrere Käufe hintereinander.
 - **Verkaufen** (Knopf „VK“): nur Preis eintippen, Gewinn wird live berechnet. Schnellauswahl
-  „Ziel“ (kalk. VK), „Break-even“, „+10 %“, „+20 %“ (inkl. Preisstufen des Transfermarkts).
+  „kalk. VK“, „Break-even“, „+10 %“, „+20 %“ (inkl. Preisstufen des Transfermarkts).
 
 ### Einkaufsliste (Tab „Einkauf“)
-- Jede als verkauft markierte Karte erscheint automatisch mit **Name, Rating, Chemiestil und letztem EK** –
+- Jede als verkauft markierte Karte erscheint automatisch mit **Name, Rating, Chemistry Style und letztem EK** –
   gleiche Karten zusammengefasst („Amani 78 Basic ×3“), dazu Anzahl und Budget (Summe letzter EK).
 - **„Gekauft“**: EK ist mit dem letzten Wert vorausgefüllt (± Preisstufe, Anzahl wählbar) → wird als neuer Kauf gespeichert.
 - **✕** nimmt eine Karte ohne Nachkauf von der Liste.
@@ -72,16 +72,16 @@ Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein 
 
 | Ansicht im Spiel | Erkannt | Aktion in der App |
 |---|---|---|
-| Item-Details „…ergattert f. 1.000“ / „Item gekauft für“ | Name, Rating, Chemiestil, Kaufpreis | Kauf prüfen & speichern |
+| Item-Details „…ergattert f. 1.000“ / „Item gekauft für“ | Name, Rating, Chemistry Style, Kaufpreis | Kauf prüfen & speichern |
 | Kandidatenliste → Ersteigerte Items | alle Karten mit „Verkauft für“ (= bezahlter Preis) | mehrere Käufe auf einmal |
 | Transferliste → Verk. Items | alle verkauften Karten mit „Verkauft für“ | Verkäufe dem ältesten offenen Kauf zuordnen |
 | Item-Details „Endpreis 2.100“ | Name, Rating, Verkaufspreis | Verkauf verbuchen |
 | Bildschirmvideo | alle 0,5 s ein ruhiges Einzelbild (gleiche und Wisch-Übergänge übersprungen, max. 12) – jede durchgewischte Karte wird erfasst | wie oben |
 
 - Kontostand, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ werden ignoriert.
-- **Chemiestil am Kartensymbol** (alle 23 Stile). Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des
+- **Chemistry Style am Kartensymbol** (alle 23 Stile). Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des
   Spielers vorbelegt und markiert. Korrekturen werden als Vorlage gespeichert (gemeinsam im Depot) – die Erkennung lernt mit.
-- Beim Verkauf kommen Chemiestil und EK aus dem Kauf (EA zeigt den Stil nach dem Verkauf nicht mehr).
+- Beim Verkauf kommen Chemistry Style und EK aus dem Kauf (EA zeigt den Stil nach dem Verkauf nicht mehr).
 - Doppelte Scans (gleicher Spieler & Preis am selben Tag) werden markiert.
 - Namen werden tolerant abgeglichen: „Fiamma Benítez“ im Spiel passt zu „Benitez“ aus der Excel.
 - Dauer: ca. 3–8 Sekunden pro Screenshot. Beim ersten Scan wird die Texterkennung einmalig geladen (~9 MB).
@@ -130,7 +130,7 @@ TL-Wert (eigen), VK ÜV-Karten, ÜV-Karten a. Liste, Gewinn ÜV. Die App rechnet
 | Oberfläche | HTML/CSS/JavaScript ohne Build-Schritt, installierbar (PWA, offline) | SwiftUI, iOS 17+ |
 | Daten | Firebase Firestore + anonyme Anmeldung, Zugriff über **Depot-Code** | gleich |
 | Texterkennung | Tesseract.js (deutsch), zwei Durchgänge (normal + invertiert) | Apple Vision |
-| Chemiestil | Symbolabgleich `web/js/chemicons.js` | `ChemistryIconMatcher.swift` |
+| Chemistry Style | Symbolabgleich `web/js/chemicons.js` | `ChemistryIconMatcher.swift` |
 
 Datenstruktur: `depots/{Code}/players/{ID}`, `depots/{Code}/snapshots/{ID}`, `depots/{Code}/chemIcons/{ID}`
 
@@ -151,9 +151,9 @@ nach `FCTrader/` legen, erneut `xcodegen`. Ohne die Datei startet die App im Dem
 
 ## Anpassen
 
-- **Chemiestile**: `web/js/calc.js` (`STYLES`) bzw. `FCTrader/Models/ChemistryStyles.swift`.
+- **Chemistry Stylee**: `web/js/calc.js` (`STYLES`) bzw. `FCTrader/Models/ChemistryStyles.swift`.
 - **Steuersatz / Aufschläge**: `TAX_RATE` und `TIERS` in `web/js/calc.js` bzw. `FCTrader/Models/PlayerCard.swift`.
-- **Chemiestil-Symbole**: Vorlagen neu erzeugen mit
+- **Chemistry Style-Symbole**: Vorlagen neu erzeugen mit
   `python3 Tools/chem_icons/build_templates.py <Ordner mit Item-Details-Screenshots, benannt nach Stil>`
   (schreibt die Swift-Datei; für die Web-App anschließend `web/js/chem-templates.js` daraus übernehmen).
 
