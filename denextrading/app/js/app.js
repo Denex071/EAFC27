@@ -616,9 +616,9 @@ function firstStepsHtml() {
 }
 
 const TOUR = [
-  ["📈", "Willkommen bei Denex Trading", "Dein Tracker für Karten-Trading: jeder Kauf und Verkauf an einem Ort, Gewinn automatisch nach 5 % Tax."],
+  ["📈", "Willkommen bei Denex Trading", "Die Tracking-App für Verkäufe! Alle Daten & Informationen an einem Ort!"],
   ["＋", "Käufe erfassen", "Oben rechts auf <b>+</b> tippen – oder das <b>Scan-Symbol</b> daneben nutzen und einen Screenshot bzw. ein Bildschirmvideo aus dem Spiel hochladen. Die App erkennt Name, Rating, Chemistry Style und Preis."],
-  ["💰", "Verkaufen", "Im Tab <b>Spieler</b> bei einer Karte auf <b>VK</b> tippen. Schnellwahl für kalk. VK und Break-even – der Gewinn wird live angezeigt. Verkäufe können auch per Screenshot der Transferliste erfasst werden."],
+  ["💰", "Verkaufen", "Im Tab <b>Spieler</b> auf den verkauften Spieler tippen und den Verkaufspreis eingeben. Alternativ einen <b>Screenshot</b> oder ein <b>Video</b> von den verkauften Spielern hochladen!"],
   ["🛒", "Einkaufsliste", "Jede verkaufte Karte erscheint im Tab <b>Einkauf</b> zum Nachkaufen – mit letztem EK, bisherigen Gewinnen und dem <b>max. EK</b>, bis zu dem sich der Nachkauf noch lohnt."],
   ["📊", "Statistiken", "Die <b>Übersicht</b> zeigt Gewinn, Wochenziel, Ladenhüter und was sich am meisten lohnt. Ziele und Aufschläge stellst du unter <b>Einstellungen</b> ein – dort findest du auch jederzeit die Anleitung."],
 ];
