@@ -169,32 +169,4 @@ struct TradingStats {
             }
             .sorted { $0.start > $1.start }
     }
-
-}
-
-/// Automatisch berechnete Werte eines Wochenstands (bisher Spalten "ÜV-Karten" und "TL-Wert lt. Excel").
-struct WeekFigures {
-    /// Verkäufe seit dem vorherigen Stand.
-    let soldCount: Int
-    /// Trading-Gewinn seit dem vorherigen Stand.
-    let tradingProfit: Int
-    /// Spieler, die zum Stichtag gekauft und noch nicht verkauft waren.
-    let openCount: Int
-    /// Kalkulierter VK-Wert dieser Spieler.
-    let openTargetValue: Int
-
-    init(cards: [PlayerCard], after start: Date?, upTo end: Date) {
-        let sold = cards.filter { card in
-            guard let date = card.sellDate else { return false }
-            return date <= end && (start.map { date > $0 } ?? true)
-        }
-        soldCount = sold.count
-        tradingProfit = sold.compactMap(\.profit).reduce(0, +)
-
-        let open = cards.filter { card in
-            card.buyDate <= end && (card.sellDate.map { $0 > end } ?? true)
-        }
-        openCount = open.count
-        openTargetValue = open.map(\.targetPrice).reduce(0, +)
-    }
 }

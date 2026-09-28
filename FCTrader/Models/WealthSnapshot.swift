@@ -1,17 +1,25 @@
 import Foundation
 
-/// Wöchentlicher Vermögensstand (ersetzt den Reiter "Wochenübersicht" der Excel).
+/// Wöchentlicher Stand – alle Werte sind händische Eingaben wie im Reiter "Wochenübersicht" der Excel.
 struct WealthSnapshot: Identifiable, Hashable {
     var id: String = UUID().uuidString
     var date: Date
-    /// Teamwert, z. B. laut ESBC.
+    /// Teamwert (lt. ESBC)
     var teamValue: Int
-    /// Wert der Transferliste, z. B. laut ESBC.
+    /// TL-Wert (lt. ESBC)
     var transferListValue: Int
-    /// Coins auf dem Konto.
+    /// Coins Bank
     var coins: Int
+    /// TL-Wert (lt. Excel / eigene Rechnung)
+    var ownTransferListValue: Int = 0
+    /// VK ÜV-Karten
+    var soldCards: Int = 0
+    /// ÜV-Karten a. Liste
+    var listedCards: Int = 0
+    /// Gewinn ÜV
+    var tradingProfit: Int = 0
     var notes: String = ""
 
-    /// Gesamtvermögen = Teamwert + Transferliste + Coins.
+    /// ges. Vermögen = Teamwert + TL-Wert (ESBC) + Coins – wie in der Excel.
     var total: Int { teamValue + transferListValue + coins }
 }

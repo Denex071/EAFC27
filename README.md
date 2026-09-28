@@ -61,22 +61,12 @@ Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt) – alles, was die Excel-S
 - „Am längsten im Club“ – Ladenhüter mit Ziel-VK und Direkt-Verkaufen-Button
 
 ### Vermögen (ersetzt die „Wochenübersicht“)
-Einmal pro Woche einen Stand anlegen. Die Werte vom letzten Stand sind vorausgefüllt.
+Einmal pro Woche einen Stand mit denselben Werten wie in der Excel eintragen (alles händisch):
+Teamwert (ESBC), TL-Wert (ESBC), Coins Bank, TL-Wert (eigen), VK ÜV-Karten, ÜV-Karten a. Liste, Gewinn ÜV.
 
-| Spalte der Excel | In der App |
-|---|---|
-| Teamwert (lt. ESBC) | Eingabe |
-| TL-Wert (lt. ESBC) | Eingabe |
-| Coins Bank | Eingabe |
-| TL-Wert (lt. Excel) | automatisch: kalk. VK aller Spieler, die zum Stichtag auf Liste waren |
-| VK ÜV-Karten | automatisch: Verkäufe seit dem letzten Stand |
-| ÜV-Karten a. Liste | automatisch: offene Spieler zum Stichtag |
-| Gewinn ÜV | automatisch: Trading-Gewinn seit dem letzten Stand |
-| ges. Vermögen | automatisch: Teamwert + TL-Wert (ESBC) + Coins |
-| Plus z. Vorw. | automatisch bei jedem Wert |
-
-Die automatischen Werte werden für jedes Datum aus den erfassten Spielern berechnet – auch für
-nachträglich angelegte Stände. Dazu gibt es ein Verlaufsdiagramm des Gesamtvermögens.
+- Wertefelder sind mit dem letzten Stand vorausgefüllt, die ÜV-Felder starten leer.
+- Automatisch: **ges. Vermögen** (Teamwert + TL-Wert ESBC + Coins) und **Plus z. Vorw.** bei jedem Wert.
+- Verlaufsdiagramm des Gesamtvermögens.
 
 ### Spielerliste
 Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),

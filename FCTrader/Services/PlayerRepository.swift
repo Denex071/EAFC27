@@ -99,6 +99,10 @@ extension WealthSnapshot {
             "teamValue": teamValue,
             "transferListValue": transferListValue,
             "coins": coins,
+            "ownTransferListValue": ownTransferListValue,
+            "soldCards": soldCards,
+            "listedCards": listedCards,
+            "tradingProfit": tradingProfit,
             "notes": notes,
         ]
     }
@@ -111,6 +115,10 @@ extension WealthSnapshot {
             teamValue: (data["teamValue"] as? NSNumber)?.intValue ?? 0,
             transferListValue: (data["transferListValue"] as? NSNumber)?.intValue ?? 0,
             coins: (data["coins"] as? NSNumber)?.intValue ?? 0,
+            ownTransferListValue: (data["ownTransferListValue"] as? NSNumber)?.intValue ?? 0,
+            soldCards: (data["soldCards"] as? NSNumber)?.intValue ?? 0,
+            listedCards: (data["listedCards"] as? NSNumber)?.intValue ?? 0,
+            tradingProfit: (data["tradingProfit"] as? NSNumber)?.intValue ?? 0,
             notes: data["notes"] as? String ?? ""
         )
     }
@@ -168,10 +176,15 @@ final class DemoRepository: PlayerRepository {
     init() {
         for card in Self.sampleData() { cards[card.id] = card }
         let week: TimeInterval = 7 * 86_400
-        for (i, s) in [(92_000, 170_000, 35_000), (98_000, 185_000, 61_000)].enumerated() {
+        let demo = [
+            (92_000, 170_000, 35_000, 200_000, 67, 82, 59_000),
+            (98_000, 185_000, 61_000, 215_000, 74, 79, 64_500),
+        ]
+        for (i, s) in demo.enumerated() {
             let snapshot = WealthSnapshot(
                 date: Date().addingTimeInterval(-Double(1 - i) * week - 3_600),
-                teamValue: s.0, transferListValue: s.1, coins: s.2
+                teamValue: s.0, transferListValue: s.1, coins: s.2,
+                ownTransferListValue: s.3, soldCards: s.4, listedCards: s.5, tradingProfit: s.6
             )
             snapshots[snapshot.id] = snapshot
         }
