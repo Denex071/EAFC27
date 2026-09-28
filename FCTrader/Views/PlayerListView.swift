@@ -86,7 +86,7 @@ struct PlayerListView: View {
             .searchable(text: $search, prompt: "Spieler oder Chemiestil")
             .safeAreaInset(edge: .top) { filterBar }
             .safeAreaInset(edge: .bottom) { summaryBar }
-            .navigationTitle("Karten")
+            .navigationTitle("Spieler")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { sortMenu }
                 ToolbarItem(placement: .topBarTrailing) { AddCardButton() }
@@ -131,7 +131,7 @@ struct PlayerListView: View {
                 Text("\(cards.count) Karten")
                 Spacer()
                 if filter == .open {
-                    Text("Kapital \(Coins.compact(cards.map(\.buyPrice).reduce(0, +)))")
+                    Text("EK \(Coins.compact(cards.map(\.buyPrice).reduce(0, +))) · Ziel \(Coins.compact(cards.map(\.targetPrice).reduce(0, +)))")
                 } else {
                     Text("Gewinn")
                     ProfitText(value: cards.compactMap(\.profit).reduce(0, +), font: .subheadline.bold(), compact: true)
@@ -180,7 +180,7 @@ struct PlayerRow: View {
                 } else {
                     Text(Coins.format(card.buyPrice))
                         .font(.body.bold().monospacedDigit())
-                    Text("BE \(Coins.compact(card.breakEvenPrice)) · \(card.holdDuration.holdText)")
+                    Text("Ziel \(Coins.compact(card.targetPrice)) · \(card.holdDuration.holdText)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

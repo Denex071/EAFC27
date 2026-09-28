@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class PlayerStore: ObservableObject {
     @Published private(set) var players: [PlayerCard] = []
+    @Published private(set) var snapshots: [WealthSnapshot] = []
     @Published private(set) var isDemo = false
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
@@ -13,6 +14,7 @@ final class PlayerStore: ObservableObject {
     func connect(depotCode: String) async {
         repository?.stopListening()
         players = []
+        snapshots = []
         isLoading = true
 
         let repo: PlayerRepository
@@ -34,6 +36,10 @@ final class PlayerStore: ObservableObject {
             Task { @MainActor in
                 self?.players = cards
                 self?.isLoading = false
+            }
+        } onSnapshots: { [weak self] snapshots in
+            Task { @MainActor in
+                self?.snapshots = snapshots.sorted { $0.date > $1.date }
             }
         } onError: { [weak self] error in
             Task { @MainActor in
@@ -82,6 +88,27 @@ final class PlayerStore: ObservableObject {
         perform { try await $0.delete(id: card.id) }
     }
 
+    /// Import aus Excel/CSV. Bereits importierte Zeilen werden überschrieben, nicht verdoppelt.
+    func importCards(_ cards: [PlayerCard]) async throws {
+        guard let repository else { return }
+        try await repository.saveAll(cards)
+    }
+
+    func save(_ snapshot: WealthSnapshot) {
+        if let index = snapshots.firstIndex(where: { $0.id == snapshot.id }) {
+            snapshots[index] = snapshot
+        } else {
+            snapshots.append(snapshot)
+            snapshots.sort { $0.date > $1.date }
+        }
+        perform { try await $0.save(snapshot) }
+    }
+
+    func delete(_ snapshot: WealthSnapshot) {
+        snapshots.removeAll { $0.id == snapshot.id }
+        perform { try await $0.deleteSnapshot(id: snapshot.id) }
+    }
+
     private func perform(_ operation: @escaping (PlayerRepository) async throws -> Void) {
         guard let repository else { return }
         Task {
@@ -124,15 +151,20 @@ final class PlayerStore: ObservableObject {
 
     var knownNames: [String] { Array(Set(players.map(\.name))) }
 
+    /// Export im Aufbau des Excel-Reiters "Spieler" – kann auch wieder importiert werden.
     func csvExport() -> String {
-        let df = ISO8601DateFormatter()
-        var lines = ["Name;Rating;Chemiestil;EK;Kaufdatum;VK;Verkaufsdatum;EA Tax;Gewinn;Erfasst von;Notiz"]
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "dd.MM.yyyy HH:mm"
+        var lines = ["Name;Rating;ChemieStyle;EK;EK Datum;kalk. VK;VK;VK Datum;EA Tax;Gewinn;Marge %;Notiz"]
         for c in players.sorted(by: { $0.buyDate < $1.buyDate }) {
             let fields: [String] = [
                 c.name, "\(c.rating)", c.chemistryStyle, "\(c.buyPrice)", df.string(from: c.buyDate),
+                "\(c.targetPrice)",
                 c.sellPrice.map(String.init) ?? "", c.sellDate.map(df.string(from:)) ?? "",
                 c.eaTax.map(String.init) ?? "", c.profit.map(String.init) ?? "",
-                c.owner, c.notes.replacingOccurrences(of: "\n", with: " "),
+                c.margin.map { String(format: "%.1f", $0 * 100).replacingOccurrences(of: ".", with: ",") } ?? "",
+                c.notes.replacingOccurrences(of: "\n", with: " "),
             ]
             lines.append(fields.map { $0.replacingOccurrences(of: ";", with: ",") }.joined(separator: ";"))
         }

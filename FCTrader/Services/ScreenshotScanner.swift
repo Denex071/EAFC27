@@ -116,8 +116,11 @@ enum ScreenshotParser {
             .map { $0 }
     }
 
+    /// Sucht einen Stilnamen als ganzes Wort. "Basic" zählt nur, wenn die Zeile genau so heißt
+    /// (sonst taucht es z. B. in "Basic (Default)" der Stilauswahl auf).
     private static func findChemistryStyle(in lines: [String]) -> String? {
         for line in lines {
+            if let exact = ChemistryStyles.match(line) { return exact }
             let words = line.lowercased()
                 .components(separatedBy: CharacterSet.letters.inverted)
                 .filter { !$0.isEmpty }

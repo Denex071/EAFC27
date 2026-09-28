@@ -22,16 +22,24 @@ struct SellPlayerView: View {
                 Section {
                     CoinField(title: "Verkaufspreis", text: $priceText)
                         .focused($priceFocused)
-                    ChipRow(items: [0.0, 0.05, 0.10, 0.20], title: { margin in
-                        margin == 0 ? "Break-even" : "+\(Int(margin * 100)) %"
+                    ChipRow(items: [-1.0, 0.0, 0.10, 0.20], title: { margin in
+                        switch margin {
+                        case -1: return "Ziel \(Coins.compact(card.targetPrice))"
+                        case 0: return "Break-even"
+                        default: return "+\(Int(margin * 100)) %"
+                        }
+                    }, isSelected: { margin in
+                        guard let price else { return false }
+                        return price == (margin == -1 ? card.targetPrice : EATax.breakEven(buy: card.buyPrice, margin: margin))
                     }) { margin in
-                        priceText = "\(EATax.breakEven(buy: card.buyPrice, margin: margin))"
+                        let target = margin == -1 ? card.targetPrice : EATax.breakEven(buy: card.buyPrice, margin: margin)
+                        priceText = "\(target)"
                     }
                     DatePicker("Verkaufsdatum", selection: $date)
                 } header: {
                     Text("Verkauf")
                 } footer: {
-                    Text("Chips setzen den Preis, der nach 5 % EA Tax die gewünschte Marge bringt.")
+                    Text("Ziel = kalkulierter VK (EK + Aufschlag laut eurer Tabelle). Die %-Chips setzen den Preis, der nach 5 % EA Tax die gewünschte Marge bringt.")
                 }
 
                 Section("Abrechnung") {

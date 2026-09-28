@@ -150,7 +150,7 @@ struct AddPlayerView: View {
             Text("Kauf")
         } footer: {
             if let buyPrice, buyPrice > 0 {
-                Text("Break-even nach 5 % Tax: \(Coins.format(EATax.breakEven(buy: buyPrice))) · +10 % Gewinn ab \(Coins.format(EATax.breakEven(buy: buyPrice, margin: 0.10)))")
+                Text("Kalk. VK: \(Coins.format(TargetPrice.forBuyPrice(buyPrice))) · Break-even nach 5 % Tax: \(Coins.format(EATax.breakEven(buy: buyPrice)))")
             }
         }
     }

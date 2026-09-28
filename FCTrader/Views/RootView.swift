@@ -13,7 +13,9 @@ struct RootView: View {
                 DashboardView()
                     .tabItem { Label("Übersicht", systemImage: "chart.bar.xaxis") }
                 PlayerListView()
-                    .tabItem { Label("Karten", systemImage: "person.crop.rectangle.stack") }
+                    .tabItem { Label("Spieler", systemImage: "person.crop.rectangle.stack") }
+                WealthView()
+                    .tabItem { Label("Vermögen", systemImage: "banknote") }
                 SettingsView()
                     .tabItem { Label("Einstellungen", systemImage: "gearshape") }
             }

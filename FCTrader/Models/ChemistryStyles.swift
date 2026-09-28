@@ -17,4 +17,12 @@ enum ChemistryStyles {
         // Torhüter
         "Wall", "Shield", "Cat", "Glove",
     ]
+
+    /// Findet den passenden Stil unabhängig von Groß-/Kleinschreibung ("anchor" → "Anchor").
+    /// "GK Basic" (Torhüter) ist derselbe Stil wie "Basic".
+    static func match(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.caseInsensitiveCompare("GK Basic") == .orderedSame { return none }
+        return all.first { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+    }
 }

@@ -23,6 +23,18 @@ struct PlayerCard: Identifiable, Hashable {
     /// Gewinn = Verkaufspreis − 5 % EA Tax − Einkaufspreis.
     var profit: Int? { sellPrice.map { EATax.profit(buy: buyPrice, sell: $0) } }
 
+    /// Marge wie in der Excel: Gewinn / Verkaufspreis.
+    var margin: Double? {
+        guard let sellPrice, sellPrice > 0, let profit else { return nil }
+        return Double(profit) / Double(sellPrice)
+    }
+
+    /// Kalkulierter Verkaufspreis ("kalk. VK") nach eurer Aufschlagstabelle.
+    var targetPrice: Int { TargetPrice.forBuyPrice(buyPrice) }
+
+    /// Gewinn, wenn die Karte zum kalkulierten VK verkauft wird.
+    var expectedProfit: Int { EATax.profit(buy: buyPrice, sell: targetPrice) }
+
     /// Kleinster gültiger Marktpreis, ab dem nach Tax kein Verlust entsteht.
     var breakEvenPrice: Int { EATax.breakEven(buy: buyPrice) }
 
@@ -77,5 +89,30 @@ enum PriceTicks {
 
     static func next(after price: Int) -> Int {
         roundUp(price + 1)
+    }
+}
+
+/// Aufschlag auf den Einkaufspreis – übernommen aus der Spalte "kalk. VK" der Excel.
+enum TargetPrice {
+    /// (EK bis einschließlich, Aufschlag)
+    static let tiers: [(upTo: Int, markup: Int)] = [
+        (2_000, 1_000),
+        (4_000, 1_500),
+        (6_000, 2_000),
+        (10_000, 2_500),
+        (15_000, 3_000),
+        (25_000, 4_000),
+        (50_000, 6_000),
+        (100_000, 10_000),
+        (200_000, 20_000),
+    ]
+    static let markupAbove = 60_000
+
+    static func markup(for buyPrice: Int) -> Int {
+        tiers.first { buyPrice <= $0.upTo }?.markup ?? markupAbove
+    }
+
+    static func forBuyPrice(_ buyPrice: Int) -> Int {
+        buyPrice + markup(for: buyPrice)
     }
 }

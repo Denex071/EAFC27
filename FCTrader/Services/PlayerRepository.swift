@@ -3,17 +3,24 @@ import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
 
-/// Speicherort der Karten. Firestore für den gemeinsamen Betrieb, Demo für Tests ohne Cloud.
+/// Speicherort der Daten. Firestore für den gemeinsamen Betrieb, Demo für Tests ohne Cloud.
 protocol PlayerRepository: AnyObject {
-    func startListening(onChange: @escaping ([PlayerCard]) -> Void, onError: @escaping (Error) -> Void)
+    func startListening(
+        onCards: @escaping ([PlayerCard]) -> Void,
+        onSnapshots: @escaping ([WealthSnapshot]) -> Void,
+        onError: @escaping (Error) -> Void
+    )
     func stopListening()
     func save(_ card: PlayerCard) async throws
+    func saveAll(_ cards: [PlayerCard]) async throws
     func delete(id: String) async throws
+    func save(_ snapshot: WealthSnapshot) async throws
+    func deleteSnapshot(id: String) async throws
 }
 
 // MARK: - Firestore
 
-/// Pfad: depots/{depotCode}/players/{cardId}
+/// Pfade: depots/{depotCode}/players/{cardId} und depots/{depotCode}/snapshots/{id}
 /// Beide Nutzer mit demselben Depot-Code sehen dieselben Daten in Echtzeit.
 final class FirestoreRepository: PlayerRepository {
     static var isAvailable: Bool { FirebaseApp.app() != nil }
@@ -24,37 +31,88 @@ final class FirestoreRepository: PlayerRepository {
         }
     }
 
-    private let collection: CollectionReference
-    private var listener: ListenerRegistration?
+    private let db: Firestore
+    private let cards: CollectionReference
+    private let snapshots: CollectionReference
+    private var listeners: [ListenerRegistration] = []
 
     init(depotCode: String) {
-        collection = Firestore.firestore()
-            .collection("depots").document(depotCode)
-            .collection("players")
+        let db = Firestore.firestore()
+        self.db = db
+        let depot = db.collection("depots").document(depotCode)
+        cards = depot.collection("players")
+        snapshots = depot.collection("snapshots")
     }
 
-    func startListening(onChange: @escaping ([PlayerCard]) -> Void, onError: @escaping (Error) -> Void) {
-        listener = collection.addSnapshotListener { snapshot, error in
-            if let error {
-                onError(error)
-                return
-            }
-            let cards = snapshot?.documents.compactMap { PlayerCard(id: $0.documentID, data: $0.data()) } ?? []
-            onChange(cards)
-        }
+    func startListening(
+        onCards: @escaping ([PlayerCard]) -> Void,
+        onSnapshots: @escaping ([WealthSnapshot]) -> Void,
+        onError: @escaping (Error) -> Void
+    ) {
+        listeners.append(cards.addSnapshotListener { snapshot, error in
+            if let error { onError(error); return }
+            onCards(snapshot?.documents.compactMap { PlayerCard(id: $0.documentID, data: $0.data()) } ?? [])
+        })
+        listeners.append(snapshots.addSnapshotListener { snapshot, error in
+            if let error { onError(error); return }
+            onSnapshots(snapshot?.documents.compactMap { WealthSnapshot(id: $0.documentID, data: $0.data()) } ?? [])
+        })
     }
 
     func stopListening() {
-        listener?.remove()
-        listener = nil
+        listeners.forEach { $0.remove() }
+        listeners = []
     }
 
     func save(_ card: PlayerCard) async throws {
-        try await collection.document(card.id).setData(card.firestoreData)
+        try await cards.document(card.id).setData(card.firestoreData)
+    }
+
+    /// Schreibt viele Karten in Paketen (Firestore erlaubt max. 500 pro Batch).
+    func saveAll(_ all: [PlayerCard]) async throws {
+        for start in stride(from: 0, to: all.count, by: 400) {
+            let batch = db.batch()
+            for card in all[start..<min(start + 400, all.count)] {
+                batch.setData(card.firestoreData, forDocument: cards.document(card.id))
+            }
+            try await batch.commit()
+        }
     }
 
     func delete(id: String) async throws {
-        try await collection.document(id).delete()
+        try await cards.document(id).delete()
+    }
+
+    func save(_ snapshot: WealthSnapshot) async throws {
+        try await snapshots.document(snapshot.id).setData(snapshot.firestoreData)
+    }
+
+    func deleteSnapshot(id: String) async throws {
+        try await snapshots.document(id).delete()
+    }
+}
+
+extension WealthSnapshot {
+    var firestoreData: [String: Any] {
+        [
+            "date": Timestamp(date: date),
+            "teamValue": teamValue,
+            "transferListValue": transferListValue,
+            "coins": coins,
+            "notes": notes,
+        ]
+    }
+
+    init?(id: String, data: [String: Any]) {
+        guard let date = (data["date"] as? Timestamp)?.dateValue() else { return nil }
+        self.init(
+            id: id,
+            date: date,
+            teamValue: (data["teamValue"] as? NSNumber)?.intValue ?? 0,
+            transferListValue: (data["transferListValue"] as? NSNumber)?.intValue ?? 0,
+            coins: (data["coins"] as? NSNumber)?.intValue ?? 0,
+            notes: data["notes"] as? String ?? ""
+        )
     }
 }
 
@@ -103,21 +161,44 @@ extension PlayerCard {
 /// Nur im Speicher – zum Ausprobieren ohne Firebase-Setup.
 final class DemoRepository: PlayerRepository {
     private var cards: [String: PlayerCard] = [:]
-    private var onChange: (([PlayerCard]) -> Void)?
+    private var snapshots: [String: WealthSnapshot] = [:]
+    private var onCards: (([PlayerCard]) -> Void)?
+    private var onSnapshots: (([WealthSnapshot]) -> Void)?
 
     init() {
         for card in Self.sampleData() { cards[card.id] = card }
+        let week: TimeInterval = 7 * 86_400
+        for (i, s) in [(92_000, 170_000, 35_000), (98_000, 185_000, 61_000)].enumerated() {
+            let snapshot = WealthSnapshot(
+                date: Date().addingTimeInterval(-Double(1 - i) * week - 3_600),
+                teamValue: s.0, transferListValue: s.1, coins: s.2
+            )
+            snapshots[snapshot.id] = snapshot
+        }
     }
 
-    func startListening(onChange: @escaping ([PlayerCard]) -> Void, onError: @escaping (Error) -> Void) {
-        self.onChange = onChange
+    func startListening(
+        onCards: @escaping ([PlayerCard]) -> Void,
+        onSnapshots: @escaping ([WealthSnapshot]) -> Void,
+        onError: @escaping (Error) -> Void
+    ) {
+        self.onCards = onCards
+        self.onSnapshots = onSnapshots
         publish()
     }
 
-    func stopListening() { onChange = nil }
+    func stopListening() {
+        onCards = nil
+        onSnapshots = nil
+    }
 
     func save(_ card: PlayerCard) async throws {
         cards[card.id] = card
+        publish()
+    }
+
+    func saveAll(_ all: [PlayerCard]) async throws {
+        for card in all { cards[card.id] = card }
         publish()
     }
 
@@ -126,8 +207,19 @@ final class DemoRepository: PlayerRepository {
         publish()
     }
 
+    func save(_ snapshot: WealthSnapshot) async throws {
+        snapshots[snapshot.id] = snapshot
+        publish()
+    }
+
+    func deleteSnapshot(id: String) async throws {
+        snapshots[id] = nil
+        publish()
+    }
+
     private func publish() {
-        onChange?(Array(cards.values))
+        onCards?(Array(cards.values))
+        onSnapshots?(Array(snapshots.values))
     }
 
     private static func sampleData() -> [PlayerCard] {

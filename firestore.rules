@@ -2,8 +2,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Jeder angemeldete (anonyme) App-Nutzer darf ein Depot lesen/schreiben,
-    // wenn er den Depot-Code kennt. Der Code ist quasi das gemeinsame Passwort.
-    match /depots/{depotCode}/players/{playerId} {
+    // (Karten und Vermögens-Snapshots), wenn er den Depot-Code kennt. Der Code ist quasi das gemeinsame Passwort.
+    match /depots/{depotCode}/{collection}/{docId} {
       allow read, write: if request.auth != null && depotCode.size() >= 6;
     }
   }
