@@ -15,7 +15,6 @@ struct AddPlayerView: View {
     @State private var chemistryStyle: String
     @State private var buyPriceText: String
     @State private var buyDate: Date
-    @State private var owner: String
     @State private var isSold: Bool
     @State private var sellPriceText: String
     @State private var sellDate: Date
@@ -33,7 +32,6 @@ struct AddPlayerView: View {
         _chemistryStyle = State(initialValue: existing?.chemistryStyle ?? ChemistryStyles.none)
         _buyPriceText = State(initialValue: existing.map { "\($0.buyPrice)" } ?? "")
         _buyDate = State(initialValue: existing?.buyDate ?? .now)
-        _owner = State(initialValue: existing?.owner ?? "")
         _isSold = State(initialValue: existing?.isSold ?? false)
         _sellPriceText = State(initialValue: existing?.sellPrice.map(String.init) ?? "")
         _sellDate = State(initialValue: existing?.sellDate ?? .now)
@@ -49,12 +47,6 @@ struct AddPlayerView: View {
             && rating != nil
             && (buyPrice ?? 0) > 0
             && (!isSold || (sellPrice ?? 0) > 0)
-    }
-
-    private var ownerOptions: [String] {
-        var all = store.owners
-        for o in [userName, owner] where !o.isEmpty && !all.contains(o) { all.append(o) }
-        return all.sorted()
     }
 
     var body: some View {
@@ -86,7 +78,6 @@ struct AddPlayerView: View {
                 }
             }
             .onAppear {
-                if owner.isEmpty { owner = userName }
                 if existing == nil { focus = .name }
             }
         }
@@ -155,11 +146,6 @@ struct AddPlayerView: View {
             CoinField(title: "Einkaufspreis", text: $buyPriceText)
                 .focused($focus, equals: .buyPrice)
             DatePicker("Kaufdatum", selection: $buyDate)
-            if ownerOptions.count > 1 {
-                Picker("Gekauft von", selection: $owner) {
-                    ForEach(ownerOptions, id: \.self) { Text($0).tag($0) }
-                }
-            }
         } header: {
             Text("Kauf")
         } footer: {
@@ -289,7 +275,7 @@ struct AddPlayerView: View {
         card.chemistryStyle = chemistryStyle
         card.buyPrice = buyPrice
         card.buyDate = buyDate
-        card.owner = owner.isEmpty ? userName : owner
+        if card.owner.isEmpty { card.owner = userName }
         card.sellPrice = sellPrice
         card.sellDate = isSold ? sellDate : nil
         card.notes = notes

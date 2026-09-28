@@ -4,12 +4,11 @@ import Charts
 struct DashboardView: View {
     @EnvironmentObject private var store: PlayerStore
     @State private var period: StatsPeriod = .all
-    @State private var ownerFilter: String?
     @State private var selling: PlayerCard?
     @State private var chartSelection: Date?
 
     private var currentStats: TradingStats {
-        TradingStats(players: store.players, period: period, owner: ownerFilter)
+        TradingStats(players: store.players, period: period)
     }
 
     var body: some View {
@@ -22,18 +21,11 @@ struct DashboardView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    if store.owners.count > 1 {
-                        ChipRow(items: [nil] + store.owners.map(Optional.some), title: { $0 ?? "Gemeinsam" }, isSelected: { $0 == ownerFilter }) {
-                            ownerFilter = $0
-                        }
-                    }
-
                     hero(stats)
                     tiles(stats)
                     if stats.profitCurve.count >= 2 { chart(stats) }
                     flips(stats)
                     if !stats.longestHeld.isEmpty { longestHeld(stats) }
-                    if store.owners.count > 1 && ownerFilter == nil { perOwner(stats) }
                 }
                 .padding()
             }
@@ -191,21 +183,6 @@ struct DashboardView: View {
                     Button("Verkaufen") { selling = card }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                }
-            }
-        }
-    }
-
-    private func perOwner(_ stats: TradingStats) -> some View {
-        CardSection(title: "Wer liegt vorne?") {
-            ForEach(stats.perOwner.sorted { $0.profit > $1.profit }) { summary in
-                HStack {
-                    Text(summary.owner).font(.subheadline.bold())
-                    Text("\(summary.sold) verkauft · \(summary.open) offen")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    ProfitText(value: summary.profit)
                 }
             }
         }

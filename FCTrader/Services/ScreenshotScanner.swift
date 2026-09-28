@@ -22,7 +22,7 @@ enum TextRecognizer {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = false
-            request.recognitionLanguages = ["en-US", "de-DE"]
+            request.recognitionLanguages = ["de-DE", "en-US"]
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
             let observations = request.results ?? []
             // Von oben nach unten, dann links nach rechts sortieren.
@@ -61,19 +61,36 @@ enum TextRecognizer {
 
 /// Heuristik, die aus den Textzeilen eines EA FC Screenshots die Kartendaten zieht.
 enum ScreenshotParser {
+    /// Preis-Stichwörter der deutschen Spieloberfläche, nach Priorität sortiert
+    /// (eindeutige Kauf-/Verkaufsangaben zuerst, Gebote zuletzt).
     private static let priceKeywords = [
-        "buy now", "sofortkauf", "bought", "gekauft", "kaufpreis", "sold", "verkauft",
-        "price", "preis", "coins", "münzen",
+        "gekauft für", "verkauft für", "kaufpreis", "verkaufspreis",
+        "sofortkaufpreis", "sofortkauf", "gekauft", "verkauft",
+        "preis", "münzen", "startpreis", "aktuelles gebot", "gebot",
+        // Englische Oberfläche als Rückfall
+        "bought for", "sold for", "buy now", "price",
     ]
 
     private static let ignoredWords: Set<String> = [
-        "PAC", "SHO", "PAS", "DRI", "DEF", "PHY", "TEM", "SCH",
-        "DIV", "HAN", "KIC", "REF", "SPD", "POS", "GK", "RB", "LB", "CB", "CDM", "CM", "CAM",
-        "RM", "LM", "RW", "LW", "ST", "CF", "TW", "IV", "LV", "RV", "ZDM", "ZM", "ZOM", "MS",
-        "BUY NOW", "SOFORTKAUF", "BID", "GEBOT", "TRANSFER", "MARKET", "TRANSFERMARKT",
-        "COMPARE PRICE", "PREISVERGLEICH", "LIST ON TRANSFER MARKET", "CLUB", "SQUAD",
-        "CHEMISTRY", "CHEMIE", "CHEMISTRY STYLE", "CHEMIESTIL", "BACK", "ZURÜCK",
-        "ULTIMATE TEAM", "TRANSFER LIST", "TRANSFERLISTE", "WATCH LIST", "BEOBACHTUNGSLISTE",
+        // Positionen (deutsch)
+        "TW", "RV", "IV", "LV", "RAV", "LAV", "ZDM", "ZM", "ZOM", "RM", "LM", "RF", "LF", "MS", "ST",
+        // Positionen (englisch)
+        "GK", "RB", "CB", "LB", "RWB", "LWB", "CDM", "CM", "CAM", "RW", "LW", "CF",
+        // Werte-Kürzel und -Namen
+        "TEM", "SCH", "PAS", "DRI", "VER", "PHY", "KÖR", "HEC", "BAL", "ABS", "REF", "GES", "STE",
+        "PAC", "SHO", "DEF", "DIV", "HAN", "KIC", "SPD", "POS",
+        "TEMPO", "SCHIESSEN", "SCHUSS", "PASSEN", "DRIBBLING", "VERTEIDIGUNG", "PHYSIS",
+        // Oberfläche
+        "SOFORTKAUF", "SOFORTKAUFPREIS", "GEBOT", "MINDESTGEBOT", "STARTPREIS", "AKTUELLES GEBOT",
+        "KAUFEN", "VERKAUFEN", "SCHNELLVERKAUF", "BIETEN", "AUF TRANSFERMARKT ANBIETEN",
+        "TRANSFERMARKT", "TRANSFERLISTE", "TRANSFERZIELE", "BEOBACHTUNGSLISTE", "TRANSFERS",
+        "PREISVERGLEICH", "VERGLEICHEN", "PREISSPANNE", "VERBLEIBENDE ZEIT", "LAUFZEIT",
+        "VEREIN", "KADER", "MEIN VEREIN", "ULTIMATE TEAM", "CHEMIE", "CHEMIESTIL", "CHEMIESTILE",
+        "SPIELERBIOGRAFIE", "SPIELERINFO", "ATTRIBUTE", "DETAILS", "ZURÜCK", "SCHLIESSEN",
+        "BESTÄTIGEN", "ABBRECHEN", "OPTIONEN", "WEITER", "FERTIG", "ERFOLGREICH", "GEKAUFT",
+        "VERKAUFT", "ABGELAUFEN", "NATION", "LIGA", "NATIONALITÄT", "SKILLMOVES", "SCHWACHER FUSS",
+        "BUY NOW", "BID", "TRANSFER MARKET", "TRANSFER LIST", "WATCH LIST", "CLUB", "SQUAD",
+        "CHEMISTRY", "CHEMISTRY STYLE", "COMPARE PRICE", "BACK",
     ]
 
     static func parse(lines rawLines: [String], knownNames: [String]) -> ScanResult {
@@ -127,9 +144,8 @@ enum ScreenshotParser {
 
     private static func findPrice(in lines: [String]) -> Int? {
         // 1. Zahl in oder direkt nach einer Zeile mit Preis-Stichwort
-        for (index, line) in lines.enumerated() {
-            let lower = line.lowercased()
-            guard priceKeywords.contains(where: { lower.contains($0) }) else { continue }
+        for keyword in priceKeywords {
+            guard let index = lines.firstIndex(where: { $0.lowercased().contains(keyword) }) else { continue }
             for candidate in lines[index..<min(index + 3, lines.count)] {
                 if let price = coinNumbers(in: candidate).first(where: { $0 >= 150 }) {
                     return price

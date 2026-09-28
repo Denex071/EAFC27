@@ -10,7 +10,7 @@ struct PlayerCard: Identifiable, Hashable {
     var buyDate: Date
     var sellPrice: Int?
     var sellDate: Date?
-    /// Wer die Karte gekauft hat (Name aus den Einstellungen).
+    /// Wer die Karte erfasst hat (nur zur Info, nicht in der Oberfläche).
     var owner: String
     var notes: String = ""
     var createdAt: Date = .now

@@ -27,14 +27,6 @@ struct TradingStats {
         let cumulative: Int
     }
 
-    struct OwnerSummary: Identifiable {
-        let owner: String
-        let profit: Int
-        let sold: Int
-        let open: Int
-        var id: String { owner }
-    }
-
     // Verkäufe im Zeitraum
     let sold: [PlayerCard]
     let realizedProfit: Int
@@ -54,15 +46,11 @@ struct TradingStats {
     let breakEvenTotal: Int
     let longestHeld: [PlayerCard]
 
-    let perOwner: [OwnerSummary]
-
-    init(players: [PlayerCard], period: StatsPeriod, owner: String? = nil) {
-        let scoped = owner.map { o in players.filter { $0.owner == o } } ?? players
-
-        sold = scoped
+    init(players: [PlayerCard], period: StatsPeriod) {
+        sold = players
             .filter { card in card.isSold && period.contains(card.sellDate ?? card.buyDate) }
             .sorted { ($0.sellDate ?? .distantPast) < ($1.sellDate ?? .distantPast) }
-        open = scoped.filter { !$0.isSold }
+        open = players.filter { !$0.isSold }
 
         let profits = sold.compactMap(\.profit)
         realizedProfit = profits.reduce(0, +)
@@ -85,17 +73,5 @@ struct TradingStats {
         capitalBound = open.map(\.buyPrice).reduce(0, +)
         breakEvenTotal = open.map(\.breakEvenPrice).reduce(0, +)
         longestHeld = Array(open.sorted { $0.buyDate < $1.buyDate }.prefix(3))
-
-        let owners = Set(players.map(\.owner)).sorted()
-        perOwner = owners.map { o in
-            let mine = players.filter { $0.owner == o }
-            let mineSold = mine.filter { $0.isSold && period.contains($0.sellDate ?? $0.buyDate) }
-            return OwnerSummary(
-                owner: o,
-                profit: mineSold.compactMap(\.profit).reduce(0, +),
-                sold: mineSold.count,
-                open: mine.filter { !$0.isSold }.count
-            )
-        }
     }
 }

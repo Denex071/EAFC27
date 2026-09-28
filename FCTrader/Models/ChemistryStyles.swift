@@ -1,7 +1,6 @@
 import Foundation
 
-/// Auswählbare Chemiestile.
-/// PLATZHALTER: Die finale Liste für EA FC 27 wird hier eingetragen, sobald sie vorliegt.
+/// Auswählbare Chemiestile (EA FC 27).
 enum ChemistryStyles {
     static let none = "Basic"
 

@@ -80,7 +80,7 @@ struct PlayerHeader: View {
             RatingBadge(rating: card.rating, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 Text(card.name).font(.headline)
-                Text("\(card.chemistryStyle) · \(card.owner)")
+                Text(card.chemistryStyle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text("EK \(Coins.format(card.buyPrice)) · \(card.buyDate.formatted(date: .abbreviated, time: .shortened))")

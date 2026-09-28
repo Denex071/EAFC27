@@ -16,7 +16,6 @@ struct PlayerListView: View {
 
     @State private var filter: Filter = .open
     @State private var sort: Sort = .newest
-    @State private var ownerFilter: String?
     @State private var search = ""
     @State private var editing: PlayerCard?
     @State private var selling: PlayerCard?
@@ -31,7 +30,6 @@ struct PlayerListView: View {
                 case .all: return true
                 }
             }
-            .filter { ownerFilter == nil || $0.owner == ownerFilter }
             .filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.chemistryStyle.localizedCaseInsensitiveContains(search) }
             .sorted { a, b in
                 switch sort {
@@ -69,7 +67,7 @@ struct PlayerListView: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) { deleting = card } label: { Label("Löschen", systemImage: "trash") }
-                            Button { store.duplicate(card, owner: userName) } label: { Label("Nochmal", systemImage: "plus.square.on.square") }
+                            Button { store.duplicate(card, recordedBy: userName) } label: { Label("Nochmal", systemImage: "plus.square.on.square") }
                                 .tint(.blue)
                         }
                         .contextMenu {
@@ -79,7 +77,7 @@ struct PlayerListView: View {
                                 Button { store.undoSell(card) } label: { Label("Verkauf rückgängig", systemImage: "arrow.uturn.backward") }
                             }
                             Button { editing = card } label: { Label("Bearbeiten", systemImage: "pencil") }
-                            Button { store.duplicate(card, owner: userName) } label: { Label("Nochmal gekauft", systemImage: "plus.square.on.square") }
+                            Button { store.duplicate(card, recordedBy: userName) } label: { Label("Nochmal gekauft", systemImage: "plus.square.on.square") }
                             Button(role: .destructive) { deleting = card } label: { Label("Löschen", systemImage: "trash") }
                         }
                 }
@@ -104,20 +102,12 @@ struct PlayerListView: View {
     }
 
     private var filterBar: some View {
-        VStack(spacing: 8) {
-            Picker("Filter", selection: $filter) {
-                ForEach(Filter.allCases) { f in
-                    Text(label(for: f)).tag(f)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            if store.owners.count > 1 {
-                ChipRow(items: [nil] + store.owners.map(Optional.some), title: { $0 ?? "Alle" }, isSelected: { $0 == ownerFilter }) {
-                    ownerFilter = $0
-                }
+        Picker("Filter", selection: $filter) {
+            ForEach(Filter.allCases) { f in
+                Text(label(for: f)).tag(f)
             }
         }
+        .pickerStyle(.segmented)
         .padding(.horizontal)
         .padding(.bottom, 8)
         .background(.bar)
@@ -175,7 +165,7 @@ struct PlayerRow: View {
                 Text(card.name)
                     .font(.headline)
                     .lineLimit(1)
-                Text("\(card.chemistryStyle) · \(card.owner)")
+                Text("\(card.chemistryStyle) · \(card.buyDate.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

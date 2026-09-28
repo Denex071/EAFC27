@@ -1,14 +1,15 @@
 # FC Trader – EA FC 27 Trading-Tracker (iOS)
 
-Gemeinsame iPhone-App für zwei (oder mehr) Trader: Käufe und Verkäufe von Spielerkarten erfassen,
+Gemeinsame iPhone-App für euer gemeinsames EA FC Konto: Käufe und Verkäufe von Spielerkarten erfassen,
 Gewinn automatisch berechnen, alles in Echtzeit zwischen den iPhones synchronisiert.
 
 ## Funktionen (Version 0.1)
 
 ### Erfassung – so wenige Taps wie möglich
-- **Kauf erfassen**: Name, Rating, Chemiestil (Dropdown), Einkaufspreis, Kaufdatum (vorausgefüllt mit „jetzt“), Käufer.
+- **Kauf erfassen**: Name, Rating, Chemiestil (Dropdown), Einkaufspreis, Kaufdatum (vorausgefüllt mit „jetzt“).
 - **Screenshot / Bildschirmvideo scannen**: Bild oder Aufnahme aus der Mediathek wählen → Name, Rating,
   Chemiestil und Preis werden per Texterkennung (Apple Vision, läuft auf dem iPhone) vorausgefüllt.
+  Die Erkennung ist auf die **deutsche Spieloberfläche** ausgerichtet (Sofortkauf, Gekauft für …, deutsche Positionen).
   Alle erkannten Texte erscheinen als Chips – Feld antippen, Chip antippen, fertig.
 - **Autovervollständigung**: Bereits gehandelte Spieler werden beim Tippen vorgeschlagen und füllen
   Rating + Chemiestil automatisch.
@@ -28,7 +29,7 @@ Zusätzlich zeigt die App für jede offene Karte den **Break-even-Preis** (klein
 nach Tax, aufgerundet auf die nächste gültige Preisstufe).
 
 ### Übersicht (Dashboard)
-Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt) und filterbar nach Person:
+Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt):
 - Realisierter Gesamtgewinn
 - Anzahl unverkaufter Karten + Break-even-Summe
 - Gebundenes Kapital (EK aller offenen Karten)
@@ -37,11 +38,10 @@ Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt) und filterbar nach Person:
 - Gewinnverlauf als Diagramm (antippen/ziehen für Details)
 - Bester und schwächster Flip
 - „Am längsten im Club“ – Ladenhüter mit Direkt-Verkaufen-Button
-- „Wer liegt vorne?“ – Vergleich zwischen dir und deinem Freund
 
 ### Kartenliste
 Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),
-Filter nach Person, Summenleiste unten. CSV-Export für Excel in den Einstellungen.
+Summenleiste unten. CSV-Export für Excel in den Einstellungen.
 
 ## Technik
 
@@ -91,16 +91,14 @@ im Simulator.
 
 ## Anpassen
 
-- **Chemiestile**: `FCTrader/Models/ChemistryStyles.swift` – aktuell ein Platzhalter mit den bekannten Stilen,
-  wird durch eure FC 27 Liste ersetzt.
+- **Chemiestile**: `FCTrader/Models/ChemistryStyles.swift`.
 - **Steuersatz**: `EATax.rate` in `FCTrader/Models/PlayerCard.swift`.
 
 ## Ideen für die nächsten Schritte
-- Chemiestil-Liste aus FC 27 übernehmen
-- Scan-Erkennung mit echten FC 27 Screenshots feinjustieren (deutsche/englische Spielsprache)
+- Scan-Erkennung mit echten FC 27 Screenshots (deutsche Oberfläche) feinjustieren
 - Share-Extension: Screenshot direkt aus der Fotos-App an FC Trader senden
 - Zielpreis pro Karte + Push-Benachrichtigung / Erinnerung für Ladenhüter
 - Kartenversion (TOTW, Promo …) und Position als zusätzliche Felder
 - Widget für den Homescreen (Tagesgewinn, offene Karten)
-- Wochen-/Monatsauswertung und Rangliste zwischen euch beiden
+- Wochen-/Monatsauswertung
 - Import bestehender Daten aus Excel/CSV

@@ -70,10 +70,10 @@ final class PlayerStore: ObservableObject {
     }
 
     /// Gleiche Karte nochmal gekauft (neuer Eintrag, gleicher Preis, jetzt).
-    func duplicate(_ card: PlayerCard, owner: String) {
+    func duplicate(_ card: PlayerCard, recordedBy: String) {
         save(PlayerCard(
             name: card.name, rating: card.rating, chemistryStyle: card.chemistryStyle,
-            buyPrice: card.buyPrice, buyDate: .now, owner: owner
+            buyPrice: card.buyPrice, buyDate: .now, owner: recordedBy
         ))
     }
 
@@ -94,10 +94,6 @@ final class PlayerStore: ObservableObject {
     }
 
     // MARK: - Abgeleitete Daten für schnelle Eingabe
-
-    var owners: [String] {
-        Set(players.map(\.owner)).filter { !$0.isEmpty }.sorted()
-    }
 
     /// Zuletzt verwendete Chemiestile (max. 5) für die Schnellauswahl.
     var recentChemistryStyles: [String] {
@@ -130,7 +126,7 @@ final class PlayerStore: ObservableObject {
 
     func csvExport() -> String {
         let df = ISO8601DateFormatter()
-        var lines = ["Name;Rating;Chemiestil;EK;Kaufdatum;VK;Verkaufsdatum;EA Tax;Gewinn;Käufer;Notiz"]
+        var lines = ["Name;Rating;Chemiestil;EK;Kaufdatum;VK;Verkaufsdatum;EA Tax;Gewinn;Erfasst von;Notiz"]
         for c in players.sorted(by: { $0.buyDate < $1.buyDate }) {
             let fields: [String] = [
                 c.name, "\(c.rating)", c.chemistryStyle, "\(c.buyPrice)", df.string(from: c.buyDate),
