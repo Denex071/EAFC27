@@ -22,8 +22,9 @@ export const tax = p => Math.round(p * TAX_RATE);
 export const profitOf = (ek, vk) => vk - tax(vk) - ek;
 export const target = ek => ek + (TIERS.find(t => ek <= t[0]) || [0, MARKUP_ABOVE])[1];
 
-const step = p => p < 1000 ? 50 : p < 10000 ? 100 : p < 50000 ? 250 : p < 100000 ? 500 : 1000;
-const roundUp = p => Math.max(150, Math.ceil(p / step(p)) * step(p));
+export const priceStep = p => p < 1000 ? 50 : p < 10000 ? 100 : p < 50000 ? 250 : p < 100000 ? 500 : 1000;
+const roundUp = p => Math.max(150, Math.ceil(p / priceStep(p)) * priceStep(p));
+export const roundDown = p => Math.max(150, Math.floor(p / priceStep(p)) * priceStep(p));
 /// Kleinster gültiger Marktpreis, der nach Tax mindestens EK × (1 + Marge) bringt.
 export function breakEven(ek, margin = 0) {
   const goal = Math.ceil(ek * (1 + margin));

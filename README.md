@@ -68,6 +68,15 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 - Alte Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste – importierte Karten, die ihr in der App verkauft, schon.
 - Im Bearbeiten-Fenster einer verkauften Karte: **„Auf die Einkaufsliste setzen“**, falls eine Karte fehlt.
 
+### Nachkauf-Bewertung
+- Jede Karte auf der Einkaufsliste zeigt, wie oft ihr sie schon gedreht habt, Ø Gewinn, Ø Haltedauer und den **max. EK**
+  (mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn). Liegt der letzte EK darüber, erscheint „teuer“.
+- Beim „Gekauft“ zusätzlich die letzten Verkäufe (EK/VK/Gewinn), ein Chip „max. EK“ und eine Warnung bei zu hohem Preis.
+
+### Transferliste („gelistet“)
+- Offene Karten lassen sich mit Angebotspreis als **gelistet** markieren (Bearbeiten → Transferliste, oder „Preis“ bei Ladenhütern).
+- Filter „Gelistet“ in der Spielerliste; beim Verkaufen ist der Angebotspreis vorbelegt.
+
 ### Screenshot / Bildschirmvideo scannen (Symbol neben dem +)
 Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
 
@@ -101,6 +110,12 @@ Marge  = Gewinn / Verkaufspreis
 - **Break-even**: kleinster Marktpreis ohne Verlust nach Tax (auf gültige Preisstufe gerundet)
 
 ### Übersicht
+- **Wochenziel** mit Fortschrittsbalken und Vergleich zur Vorwoche (bis zum gleichen Wochentag)
+- **Ladenhüter**: offene Karten ab X Tagen, gebundenes Kapital, direkt Preis anpassen oder verkaufen
+- **Gewinn pro Woche** (8 Wochen, antippbar) mit gebundenem Kapital und Rendite, **Gewinnverlauf** kumuliert
+- **Was lohnt sich?** – Gewinn, Marge, Haltedauer und **Gewinn pro Tag Haltedauer** nach Preisklasse, Style, Rating, Wochentag
+- **Verluste**: Anteil, Summe, größte Verlustbringer
+
 Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt):
 - Gesamtgewinn, unverkaufte Spieler, aktuell investiert, kalk. VK-Wert der offenen Spieler inkl. erwartetem Gewinn
 - Ø Gewinn pro Verkauf, Ø Marge, Trefferquote, Rendite, Gesamt EK / VK, Ø Haltedauer, bezahlte EA Tax
@@ -109,13 +124,19 @@ Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt):
 - Bester / schwächster Verkauf, „Am längsten im Club“ mit Ziel-VK und Verkaufen-Knopf
 
 ### Spielerliste
-Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer), Summenleiste.
+Filter Offen / Gelistet / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),
+**Zeitraum** (diese/letzte Woche, einzelne KW, Monate), Summenleiste.
 Antippen öffnet Bearbeiten (inkl. Verkauf rückgängig machen und Löschen).
 
 ### Vermögen (ersetzt die „Wochenübersicht“)
 Einmal pro Woche eintragen (alles händisch, wie in der Excel): Teamwert (ESBC), TL-Wert (ESBC), Coins Bank,
 TL-Wert (eigen), VK ÜV-Karten, ÜV-Karten a. Liste, Gewinn ÜV. Die App rechnet das **ges. Vermögen**
 (Teamwert + TL-Wert ESBC + Coins) und bei jedem Wert **Plus z. Vorw.** aus.
+
+### Trading-Ziele & Backup (Einstellungen)
+- Wochenziel, Mindestgewinn pro Karte, Ladenhüter-Tage – gemeinsam für das Depot (`depots/{Code}/settings/main`).
+- **Backup herunterladen**: alles (Spieler, Wochenstände, Symbole, Einstellungen) als JSON; die Übersicht erinnert nach 7 Tagen.
+- **Backup wiederherstellen**: überschreibt gleiche Einträge; optional „exakt wie im Backup“.
 
 ### Excel-Import & -Export
 - **Import**: eure `.xlsx` direkt (Reiter „Spieler“) oder eine `.csv`. Spalten werden über die Überschrift erkannt
@@ -159,6 +180,4 @@ nach `FCTrader/` legen, erneut `xcodegen`. Ohne die Datei startet die App im Dem
   (schreibt die Swift-Datei; für die Web-App anschließend `web/js/chem-templates.js` daraus übernehmen).
 
 ## Ideen für die nächsten Schritte
-- Zielpreis pro Karte + Erinnerung für Ladenhüter
 - Kartenversion (TOTW, Promo …) und Position als zusätzliche Felder
-- Tages-/Wochenziel mit Fortschrittsanzeige
