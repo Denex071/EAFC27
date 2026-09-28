@@ -1,0 +1,14 @@
+# Eigene Netlify-Seite für Denex Trading: in Netlify „Base directory“ = denextrading setzen.
+[build]
+  publish = "app"
+  command = ""
+
+[[headers]]
+  for = "/vendor/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

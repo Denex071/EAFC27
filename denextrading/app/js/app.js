@@ -1,21 +1,25 @@
-// FC Trader – Web-App (Oberfläche)
+// Denex Trading – Web-App (Oberfläche)
 
 import * as S from "./store.js";
+import * as cloud from "./cloud.js";
 import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, signed, compact, pct, parseCoins,
-  DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, priceStep } from "./calc.js";
+  DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, priceStep, setTiers, DEFAULT_TIERS, DEFAULT_ABOVE } from "./calc.js";
 import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.2.1";
+const VERSION = "0.1.0-beta";
+const APP = "Denex Trading";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
   get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
 };
-const settings = { name: LS.get("fct-name") || "", depot: LS.get("fct-depot") || "" };
-const CLOUD = !!window.FIREBASE_CONFIG;
+const settings = { name: LS.get("dxt-name") || "", depot: "" };
+const CLOUD = cloud.enabled();
+/// Angemeldetes Konto: { user, profile: { depotId, ownDepotId, name, email, depot } }
+const account = { user: null, profile: null };
 
 const root = document.getElementById("root");
 const layer = document.getElementById("layer");
@@ -153,46 +157,60 @@ function calcHtml(ek, vk) {
     <div class="l"><span>Break-even nach Tax</span><span class="num">${fmt(breakEven(ek))}</span></div></div>`;
   const p = profitOf(ek, vk);
   return `<div class="calc"><div class="l"><span>Verkaufspreis</span><span class="num">${fmt(vk)}</span></div>
-    <div class="l"><span>EA Tax (5 %)</span><span class="num">−${fmt(tax(vk))}</span></div>
+    <div class="l"><span>Tax (5 %)</span><span class="num">−${fmt(tax(vk))}</span></div>
     <div class="l"><span>Einkaufspreis</span><span class="num">−${fmt(ek)}</span></div>
     <div class="total"><span>Gewinn</span>${profitHtml(p)}</div>
     <div class="l"><span></span><span class="num">${pct(p / ek)} auf EK</span></div></div>`;
 }
 
 // ---------- Onboarding ----------
-function genCode() {
-  const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", p = () => Array.from({ length: 4 }, () => a[Math.floor(Math.random() * a.length)]).join("");
-  return `${p()}-${p()}`;
-}
-function renderOnboarding() {
+const legalLinks = `<p class="hint" style="text-align:center"><a href="impressum.html">Impressum</a> · <a href="datenschutz.html">Datenschutz</a></p>`;
+function renderAuth(mode = "login", note = "") {
+  const reg = mode === "register", reset = mode === "reset";
   root.innerHTML = `<div class="onb">
-    <h1>FC Trader</h1>
-    <p class="lead">Käufe und Verkäufe gemeinsam tracken – Gewinn, kalk. VK und Vermögen immer im Blick.</p>
-    ${CLOUD ? "" : `<div class="banner">Die Cloud ist noch nicht eingerichtet. Du kannst die App im Demo-Modus ausprobieren; Daten bleiben dann nur in diesem Browser.</div>`}
-    <div class="group"><div class="field"><label for="o-name">Dein Name</label><input id="o-name" value="${esc(settings.name)}" placeholder="z. B. Denis" autocomplete="given-name"></div></div>
-    <button class="primary" id="o-new" ${CLOUD ? "" : "disabled"}>Neues Depot erstellen</button>
-    <div class="group"><div class="gh">Code vom Freund erhalten?</div>
-      <div class="field"><label for="o-code">Depot-Code</label><input id="o-code" placeholder="K7RM-2XQP" autocapitalize="characters" autocomplete="off"></div></div>
-    <button class="secondary" id="o-join" ${CLOUD ? "" : "disabled"}>Depot beitreten</button>
-    <button class="link" id="o-demo" style="align-self:center">Mit Beispieldaten ausprobieren</button>
+    <img src="icons/icon-192.png" alt="" width="72" height="72" style="border-radius:18px">
+    <h1>${APP}</h1>
+    <p class="lead">Dein Trading-Tracker: Käufe und Verkäufe per Screenshot erfassen, Gewinn nach Tax, Nachkauf-Liste und Statistiken.</p>
+    ${CLOUD ? "" : `<div class="banner">Konten sind noch nicht eingerichtet. Du kannst die App im Demo-Modus ausprobieren; Daten bleiben dann nur in diesem Browser.</div>`}
+    ${note ? `<div class="banner" style="border-style:solid">${esc(note)}</div>` : ""}
+    ${CLOUD ? `<form id="a-form" class="form" autocomplete="on">
+      <div class="group">
+        ${reg ? `<div class="field"><label for="a-name">Name</label><input id="a-name" autocomplete="nickname" placeholder="z. B. Denis" required></div>` : ""}
+        <div class="field"><label for="a-mail">E-Mail</label><input id="a-mail" type="email" autocomplete="email" inputmode="email" required></div>
+        ${reset ? "" : `<div class="field"><label for="a-pw">Passwort</label><input id="a-pw" type="password" autocomplete="${reg ? "new-password" : "current-password"}" minlength="6" required></div>`}</div>
+      ${reg ? `<label class="check" style="border:0;padding:0 4px"><input type="checkbox" id="a-ok" required><span class="meta" style="white-space:normal">Ich habe die <a href="datenschutz.html" target="_blank">Datenschutzerklärung</a> gelesen.</span></label>` : ""}
+      <button class="primary" type="submit" id="a-go">${reg ? "Konto erstellen" : reset ? "Link zum Zurücksetzen senden" : "Anmelden"}</button>
+      <div id="a-err"></div></form>
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        ${reg || reset ? `<button class="link" data-mode="login">Schon ein Konto? Anmelden</button>` : `<button class="link" data-mode="register">Neues Konto erstellen</button><button class="link" data-mode="reset">Passwort vergessen?</button>`}</div>` : ""}
+    <button class="${CLOUD ? "link" : "primary"}" id="a-demo" style="align-self:center">Ohne Konto ausprobieren (Beispieldaten)</button>
+    ${legalLinks}
   </div>`;
-  const name = () => document.getElementById("o-name").value.trim();
-  const go = code => {
-    if (!name()) return toast("Bitte zuerst deinen Namen eingeben", true);
-    settings.name = name(); settings.depot = code; LS.set("fct-name", settings.name); LS.set("fct-depot", code); start();
+  root.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => renderAuth(b.dataset.mode));
+  document.getElementById("a-demo").onclick = () => { LS.set("dxt-demo", "1"); if (!settings.name) settings.name = "Ich"; openApp("DEMO"); };
+  const form = document.getElementById("a-form"); if (!form) return;
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const btn = document.getElementById("a-go"), err = document.getElementById("a-err"), label = btn.textContent;
+    const mail = document.getElementById("a-mail").value, pw = document.getElementById("a-pw")?.value || "";
+    btn.disabled = true; btn.textContent = "Einen Moment …"; err.innerHTML = "";
+    try {
+      if (reset) { await cloud.resetPassword(mail); return renderAuth("login", "Falls ein Konto existiert, ist eine E-Mail zum Zurücksetzen unterwegs."); }
+      if (reg) {
+        const name = document.getElementById("a-name").value.trim();
+        if (!name) throw new Error("Bitte einen Namen eingeben.");
+        settings.name = name; LS.set("dxt-name", name); pendingName = name;
+        await cloud.register(mail, pw, name);
+      } else await cloud.login(mail, pw);
+      // weiter geht es in onUser → ensureProfile
+    } catch (x) { err.innerHTML = `<div class="err">${esc(cloud.message(x))}</div>`; btn.disabled = false; btn.textContent = label; }
   };
-  document.getElementById("o-new").onclick = () => go(genCode());
-  document.getElementById("o-join").onclick = () => {
-    const c = document.getElementById("o-code").value.trim().toUpperCase();
-    if (c.length < 6) return toast("Der Code hat 8 Zeichen, z. B. K7RM-2XQP", true);
-    go(c);
-  };
-  document.getElementById("o-demo").onclick = () => { if (!name()) document.getElementById("o-name").value = "Ich"; go("DEMO"); };
 }
+let pendingName = "";
 
 // ---------- Hauptansicht ----------
-const ui = { tab: LS.get("fct-tab") || "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9, wsel: 7,
-  dim: LS.get("fct-dim") || "price", range: "all" };
+const ui = { tab: LS.get("dxt-tab") || "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9, wsel: 7,
+  dim: LS.get("dxt-dim") || "price", range: "all" };
 const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", wealth: "Vermögen", more: "Einstellungen" };
 const TABS = ["dash", "list", "buy", "wealth", "more"];
 const ICONS = {
@@ -216,7 +234,7 @@ function renderShell() {
     <nav class="tabs"><div class="inner">${TABS.map(t => `<button data-tab="${t}"><span class="ico">${ICONS[t]}<span class="tabbadge" data-badge="${t}" hidden></span></span>${TITLES[t]}</button>`).join("")}</div></nav>`;
   root.querySelector("nav.tabs").onclick = e => {
     const b = e.target.closest("[data-tab]"); if (!b) return;
-    ui.tab = b.dataset.tab; LS.set("fct-tab", ui.tab); render(); scrollTo(0, 0);
+    ui.tab = b.dataset.tab; LS.set("dxt-tab", ui.tab); render(); scrollTo(0, 0);
   };
   document.getElementById("addBtn").onclick = () => openAdd();
   const input = document.getElementById("scanInput");
@@ -229,7 +247,7 @@ function renderShell() {
 function render() {
   const view = document.getElementById("view");
   if (!view) return;
-  document.getElementById("title").textContent = ui.tab === "dash" ? "EA FC 27 Trading" : TITLES[ui.tab];
+  document.getElementById("title").textContent = ui.tab === "dash" ? APP : TITLES[ui.tab];
   root.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false"));
   const badge = root.querySelector('[data-badge="buy"]');
   const openBuys = restockOpen().length;
@@ -266,7 +284,7 @@ function dashHtml() {
       ${tile("Gesamt EK", fmt(s.totalBuy), "der verkauften Spieler")}
       ${tile("Gesamt VK", fmt(s.turnover), "Rendite " + pct(s.roi))}
       ${tile("Ø Haltedauer", holdText(s.hold), "Kauf bis Verkauf")}
-      ${tile("EA Tax bezahlt", fmt(s.taxPaid), "5 % auf Verkäufe")}
+      ${tile("Tax bezahlt", fmt(s.taxPaid), "5 % auf Verkäufe")}
     </section>
     <section class="card"><div class="head"><h2>Gewinn pro Tag</h2><span class="hint">letzte 10 Tage</span></div>${dayChart(s.days)}</section>
     ${trendHtml()}
@@ -552,16 +570,10 @@ function wealthHtml() {
 
 function moreHtml() {
   const demo = S.data.mode === "demo";
-  return `<section class="card"><h2>Du</h2>
-      <div class="group" style="border:0"><div class="field" style="padding:0"><label for="m-name">Name</label><input id="m-name" value="${esc(settings.name)}"></div></div></section>
-    <section class="card"><h2>Gemeinsames Depot</h2>
-      ${demo ? `<p class="meta" style="white-space:normal;margin:0">Demo-Modus: Die Daten liegen nur in diesem Browser.</p>`
-        : `<div class="codebox">${esc(settings.depot)}</div>
-      <p class="meta" style="white-space:normal;margin:0">Alle, die diesen Code eingeben, sehen und bearbeiten dieselben Spieler in Echtzeit.</p>
-      <button class="mini" data-act="share">Code teilen</button>`}
-      <button class="mini" data-act="leave" style="color:var(--bad)">${demo ? "Demo beenden" : "Anderes Depot verwenden"}</button></section>
+  return `${accountHtml(demo)}
+    ${demo ? "" : teamHtml()}
     <section class="card"><h2>Trading-Ziele</h2>
-      <p class="meta" style="white-space:normal;margin:0">Gilt für das ganze Depot – dein Freund sieht dieselben Werte.</p>
+      <p class="meta" style="white-space:normal;margin:0">Gilt für das ganze Depot – ein eingeladener Partner sieht dieselben Werte.</p>
       <div class="group" style="border:0">
         <div class="field"><label for="c-goal">Wochenziel Gewinn</label><input id="c-goal" data-cfg="weeklyGoal" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="aus"></div>
         <div class="field"><label for="c-min">Mindestgewinn pro Karte</label><input id="c-min" data-cfg="minProfit" inputmode="decimal" value="${cfg().minProfit}"></div>
@@ -576,17 +588,69 @@ function moreHtml() {
       <button class="secondary" data-act="export">Als CSV exportieren</button>
       ${demo ? `<button class="mini" data-act="reset">Demo-Daten zurücksetzen</button>` : ""}</section>
     <section class="card"><h2>Auf dem iPhone installieren</h2>
-      <p class="meta" style="white-space:normal;margin:0">In Safari unten auf <strong>Teilen</strong> tippen und <strong>„Zum Home-Bildschirm“</strong> wählen. Danach startet FC Trader wie eine App.</p></section>
+      <p class="meta" style="white-space:normal;margin:0">In Safari unten auf <strong>Teilen</strong> tippen und <strong>„Zum Home-Bildschirm“</strong> wählen. Danach startet ${APP} wie eine App.</p></section>
     <section class="card"><h2>Berechnung</h2>
-      <div class="calc" style="padding:0"><div class="l"><span>Gewinn</span><span>VK − 5 % EA Tax − EK</span></div><div class="l"><span>Marge</span><span>Gewinn / VK</span></div>
+      <div class="calc" style="padding:0"><div class="l"><span>Gewinn</span><span>VK − 5 % Tax − EK</span></div><div class="l"><span>Marge</span><span>Gewinn / VK</span></div>
       <div class="l"><span>Gesamtvermögen</span><span>Teamwert + TL (ESBC) + Coins</span></div></div></section>
-    <section class="card" style="padding:0;gap:0"><h2 style="padding:14px 14px 8px">Kalk. VK – Aufschlag auf den EK</h2>
-      <div style="overflow-x:auto"><table class="tiers num">${TIERS.map((t, i) => `<tr><td>${fmt(i ? TIERS[i - 1][0] + 1 : 0)} – ${fmt(t[0])}</td><td>+ ${fmt(t[1])}</td></tr>`).join("")}
-      <tr><td>ab ${fmt(TIERS[TIERS.length - 1][0] + 1)}</td><td>+ ${fmt(MARKUP_ABOVE)}</td></tr></table></div></section>
+    ${tiersHtml()}
     <section class="card"><h2>Chemistry Styles</h2><p class="meta" style="white-space:normal;margin:0">${STYLES.join(" · ")}</p>
       <p class="meta" style="white-space:normal;margin:0">${S.data.icons.length} vom Nutzer gelernte Symbole</p></section>
-    <p class="hint">FC Trader ${VERSION} · ${demo ? "Demo" : "Cloud"}</p>`;
+    <section class="card"><h2>Rechtliches</h2>
+      <p class="meta" style="white-space:normal;margin:0">${APP} ist ein unabhängiges Fan-Projekt und steht in keiner Verbindung zu Electronic Arts Inc.
+        Alle Marken gehören ihren jeweiligen Inhabern.</p>
+      <div style="display:flex;gap:8px"><a class="mini" href="impressum.html">Impressum</a><a class="mini" href="datenschutz.html">Datenschutz</a></div></section>
+    <p class="hint">${APP} ${VERSION} · ${demo ? "Demo" : "Cloud"}</p>`;
 }
+
+function accountHtml(demo) {
+  if (demo) return `<section class="card"><h2>Demo-Modus</h2>
+    <p class="meta" style="white-space:normal;margin:0">Die Beispieldaten liegen nur in diesem Browser. ${CLOUD ? "Mit einem kostenlosen Konto werden deine Daten sicher gespeichert und sind auf allen Geräten da." : ""}</p>
+    <button class="primary" data-act="leave">${CLOUD ? "Konto erstellen / anmelden" : "Demo beenden"}</button></section>`;
+  const p = account.profile || {};
+  return `<section class="card"><h2>Konto</h2>
+    <div class="group" style="border:0">
+      <div class="field"><label for="m-name">Name</label><input id="m-name" value="${esc(settings.name)}" autocomplete="nickname"></div>
+      <div class="field"><label>E-Mail</label><span class="grow meta" style="text-align:right">${esc(account.user?.email || p.email || "")}</span></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini" data-act="pwreset">Passwort ändern</button><button class="mini" data-act="logout">Abmelden</button>
+      <button class="mini" data-act="delete" style="color:var(--bad)">Konto löschen</button></div></section>`;
+}
+
+function teamHtml() {
+  const p = account.profile; if (!p?.depot) return "";
+  const d = p.depot, uid = account.user.uid, owner = d.owner === uid;
+  const others = (d.members || []).filter(m => m !== uid);
+  const nameOf = m => esc(d.names?.[m] || "Partner");
+  return `<section class="card"><h2>Team</h2>
+    <p class="meta" style="white-space:normal;margin:0">Du kannst mit einem Partner auf demselben Konto im Spiel traden – beide sehen und bearbeiten dieselben Daten in Echtzeit.</p>
+    ${owner ? `${others.length ? others.map(m => `<div class="row"><span class="grow name">${nameOf(m)}</span><button class="mini" data-kick="${m}" style="color:var(--bad)">Entfernen</button></div>`).join("")
+        : '<div class="meta">Noch niemand eingeladen.</div>'}
+      ${d.invite ? `<div class="codebox">${esc(d.invite)}</div>
+        <div style="display:flex;gap:8px"><button class="mini gold" data-act="share">Code teilen</button><button class="mini" data-act="revoke">Code zurückziehen</button></div>`
+        : `<button class="secondary" data-act="invite">Partner einladen</button>`}
+      ${!others.length ? `<div class="group" style="border:0"><div class="field" style="padding:0"><label for="m-join">Code erhalten?</label><input id="m-join" placeholder="K7RM-2XQP" autocapitalize="characters" autocomplete="off"></div></div>
+        <button class="mini" data-act="join" style="align-self:flex-start">Depot beitreten</button>
+        <p class="hint" style="padding:0">Beim Beitreten siehst du die Daten des Partners. Deine bisherigen Daten bleiben gespeichert und kommen zurück, wenn du das Depot wieder verlässt.</p>` : ""}`
+      : `<div class="row"><span class="grow">Du bist im Depot von <strong>${nameOf(d.owner)}</strong>${others.length > 1 ? ` mit ${others.filter(m => m !== d.owner).map(nameOf).join(", ")}` : ""}.</span></div>
+        <button class="mini" data-act="leaveteam" style="align-self:flex-start;color:var(--bad)">Depot verlassen</button>`}</section>`;
+}
+
+function tiersHtml() {
+  const t = savedTiers() || DEFAULT_TIERS, above = S.data.settings.markupAbove ?? DEFAULT_ABOVE;
+  const custom = !!S.data.settings.tiers;
+  return `<section class="card"><div class="head"><h2>kalk. VK – Aufschläge</h2>${custom ? '<span class="tag listed">eigene</span>' : '<span class="hint">Standard</span>'}</div>
+    <p class="meta" style="white-space:normal;margin:0">kalk. VK = EK + Aufschlag. Lege fest, wie viel du je Preisklasse draufschlägst.</p>
+    <div class="group" id="tiers" style="border:0">${t.map((r, i) => `<div class="field" data-tier="${i}">
+      <label>bis</label><input data-t="0" inputmode="decimal" value="${r[0]}" style="text-align:left" aria-label="EK bis">
+      <label>+</label><input data-t="1" inputmode="decimal" value="${r[1]}" aria-label="Aufschlag">
+      <button class="mini" data-deltier="${i}" aria-label="Zeile löschen">✕</button></div>`).join("")}
+      <div class="field"><label>darüber +</label><input id="t-above" inputmode="decimal" value="${above}" aria-label="Aufschlag darüber"></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini" data-act="addtier">+ Zeile</button><button class="mini gold" data-act="savetiers">Speichern</button>
+      ${custom ? '<button class="mini" data-act="resettiers">Standard wiederherstellen</button>' : ""}</div></section>`;
+}
+// Firestore kennt keine verschachtelten Listen → gespeichert als [{ upTo, add }]
+const savedTiers = () => S.data.settings.tiers?.map(t => Array.isArray(t) ? t : [t.upTo, t.add]) || null;
+const readTiers = () => [...document.querySelectorAll("#tiers [data-tier]")].map(r => [parseCoins(r.querySelector('[data-t="0"]').value), parseCoins(r.querySelector('[data-t="1"]').value)])
+  .filter(r => r[0] > 0 && r[1] >= 0);
 
 function onViewClick(e) {
   const t = e.target;
@@ -595,7 +659,9 @@ function onViewClick(e) {
   const f = t.closest("[data-filter]"); if (f) { ui.filter = f.dataset.filter; return render(); }
   const d = t.closest("[data-day]"); if (d) { ui.sel = +d.dataset.day; return render(); }
   const wk = t.closest("[data-week]"); if (wk) { ui.wsel = +wk.dataset.week; return render(); }
-  const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("fct-dim", ui.dim); return render(); }
+  const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("dxt-dim", ui.dim); return render(); }
+  const dt = t.closest("[data-deltier]"); if (dt) { const rows = readTiers(); rows.splice(+dt.dataset.deltier, 1); return saveTiers(rows); }
+  const kick = t.closest("[data-kick]"); if (kick) return confirmButton(kick, "Sicher?", () => teamAction("kick", kick, kick.dataset.kick));
   const lp = t.closest("[data-listp]"); if (lp) { e.stopPropagation(); return openList(S.data.cards.find(c => c.id === lp.dataset.listp)); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
@@ -613,21 +679,69 @@ function onViewClick(e) {
   if (act === "backup") downloadBackup();
   if (act === "snap") openSnap();
   if (act === "import") openImport();
-  if (act === "export") download(`FC-Trader-Export-${toISODate(new Date())}.csv`, exportCSV());
+  if (act === "export") download(`Denex-Trading-Export-${toISODate(new Date())}.csv`, exportCSV());
   if (act === "share") {
-    const text = `Tritt meinem FC Trader Depot bei – Code: ${settings.depot}\n${location.href}`;
+    const text = `Tritt meinem ${APP}-Depot bei – Code: ${account.profile?.depot?.invite}\n${location.origin}${location.pathname}`;
     if (navigator.share) navigator.share({ text }).catch(() => {});
     else navigator.clipboard?.writeText(text).then(() => toast("Code kopiert"), () => {});
   }
   if (act === "reset") confirmButton(a, "Wirklich zurücksetzen?", () => { S.resetDemo(); toast("Zurückgesetzt"); });
-  if (act === "leave") confirmButton(a, "Wirklich?", () => { settings.depot = ""; LS.set("fct-depot", null); start(); });
+  if (act === "leave") { LS.set("dxt-demo", null); location.reload(); }
+  if (act === "logout") confirmButton(a, "Wirklich abmelden?", async () => { await cloud.logout(); location.reload(); });
+  if (act === "pwreset") cloud.resetPassword(account.user.email).then(() => toast("E-Mail zum Ändern des Passworts gesendet"), x => toast(cloud.message(x), true));
+  if (act === "delete") openDelete();
+  if (act === "invite" || act === "revoke" || act === "join" || act === "leaveteam") teamAction(act, a);
+  if (act === "addtier") { const rows = readTiers(); const last = rows[rows.length - 1] || [0, 0]; saveTiers([...rows, [last[0] * 2 || 1000, last[1] || 500]]); }
+  if (act === "savetiers") saveTiers(readTiers());
+  if (act === "resettiers") { S.saveSettings({ tiers: null, markupAbove: null }); toast("Standard-Aufschläge wiederhergestellt"); }
+}
+function saveTiers(rows) {
+  if (!rows.length) return toast("Mindestens eine Zeile nötig", true);
+  const above = parseCoins(document.getElementById("t-above")?.value);
+  S.saveSettings({ tiers: rows.sort((x, y) => x[0] - y[0]).map(([upTo, add]) => ({ upTo, add })), markupAbove: above >= 0 ? above : DEFAULT_ABOVE });
+  toast("Aufschläge gespeichert");
+}
+async function teamAction(act, btn, arg) {
+  const p = account.profile, uid = account.user.uid;
+  btn.disabled = true;
+  try {
+    if (act === "invite") { await cloud.createInvite(uid, p.depotId); toast("Code erstellt – jetzt teilen"); }
+    if (act === "revoke") { await cloud.revokeInvite(p.depotId); toast("Code ist ungültig"); }
+    if (act === "kick") { await cloud.removeMember(p.depotId, arg); toast("Entfernt"); }
+    if (act === "join") {
+      const code = document.getElementById("m-join").value; if (code.trim().length < 8) throw new Error("Der Code hat 8 Zeichen, z. B. K7RM-2XQP.");
+      await cloud.joinDepot(uid, code, settings.name); toast("Beigetreten");
+    }
+    if (act === "leaveteam") { await cloud.leaveDepot(account.user, p.depotId); toast("Depot verlassen"); }
+    const before = p.depotId;
+    await refreshProfile();
+    if (account.profile.depotId !== before) openApp(account.profile.depotId); else render();
+  } catch (x) { toast(cloud.message(x), true); btn.disabled = false; }
+}
+function openDelete() {
+  const d = account.profile?.depot, owner = d?.owner === account.user.uid, others = (d?.members || []).length - 1;
+  const body = `<div class="form">
+    <p class="meta" style="white-space:normal;margin:0">${owner ? `Dein Konto und <strong>alle Daten deines Depots</strong> (${S.data.cards.length} Spieler, Wochenstände, Einstellungen) werden endgültig gelöscht.${others > 0 ? ` ${others} Partner verliert damit ebenfalls den Zugriff.` : ""}`
+      : "Dein Konto wird gelöscht und du verlässt das geteilte Depot. Die Daten des Depots bleiben beim Besitzer."}
+      Tipp: vorher unter „Daten“ ein Backup herunterladen.</p>
+    <div class="group"><div class="field"><label for="d-pw">Passwort</label><input id="d-pw" type="password" autocomplete="current-password"></div></div>
+    <div id="d-err"></div></div>`;
+  sheet("Konto löschen", body, "Endgültig löschen", async () => {
+    const act = document.getElementById("act"); act.disabled = true; act.textContent = "Wird gelöscht …";
+    try { await cloud.deleteAccount(account.user, $("d-pw").value, account.profile); LS.set("dxt-name", null); location.reload(); }
+    catch (x) { $("d-err").innerHTML = `<div class="err">${esc(cloud.message(x))}</div>`; act.disabled = false; act.textContent = "Endgültig löschen"; }
+  }, () => $("d-pw").value.length >= 6);
 }
 function confirmButton(btn, text, fn) {
   if (btn.dataset.armed) return fn();
   btn.dataset.armed = 1; btn.textContent = text;
 }
 document.addEventListener("change", e => {
-  if (e.target.id === "m-name") { settings.name = e.target.value.trim(); LS.set("fct-name", settings.name); toast("Name gespeichert"); }
+  if (e.target.id === "m-name") {
+    settings.name = e.target.value.trim(); LS.set("dxt-name", settings.name);
+    if (account.user) cloud.saveName(account.user.uid, settings.name, account.profile?.depotId).then(refreshProfile).catch(() => {});
+    toast("Name gespeichert");
+  }
   if (e.target.dataset.cfg) {
     const k = e.target.dataset.cfg, v = Math.max(0, parseCoins(e.target.value) || 0);
     S.saveSettings({ [k]: k === "staleDays" ? Math.max(1, v || I.DEFAULTS.staleDays) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
@@ -830,24 +944,24 @@ function openStale() {
 
 // ---------- Backup ----------
 const backupAge = () => {
-  const t = +LS.get("fct-backup");
+  const t = +LS.get("dxt-backup");
   if (!t) return "noch nie";
   const d = daysBetween(new Date(t), new Date());
   return d <= 0 ? "heute" : d === 1 ? "gestern" : `vor ${d} Tagen`;
 };
-const backupDue = () => S.data.mode === "cloud" && S.data.cards.length > 0 && (!+LS.get("fct-backup") || Date.now() - +LS.get("fct-backup") > 7 * DAY);
+const backupDue = () => S.data.mode === "cloud" && S.data.cards.length > 0 && (!+LS.get("dxt-backup") || Date.now() - +LS.get("dxt-backup") > 7 * DAY);
 function downloadBackup() {
-  const payload = { app: "FC Trader", version: VERSION, depot: settings.depot, created: new Date().toISOString(),
+  const payload = { app: APP, version: VERSION, depot: settings.depot, created: new Date().toISOString(),
     cards: S.data.cards, snaps: S.data.snaps, icons: S.data.icons.map(({ id, style, hex }) => ({ id, style, hex })), settings: S.data.settings };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `FC-Trader-Backup-${toISODate(new Date())}.json`;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Denex-Trading-Backup-${toISODate(new Date())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  LS.set("fct-backup", String(Date.now())); toast(`Backup mit ${S.data.cards.length} Spielern gespeichert`); render();
+  LS.set("dxt-backup", String(Date.now())); toast(`Backup mit ${S.data.cards.length} Spielern gespeichert`); render();
 }
 async function restoreBackup(file) {
   let b;
   try { b = JSON.parse(await file.text()); } catch (e) { return toast("Das ist keine Backup-Datei", true); }
-  if (b?.app !== "FC Trader" || !Array.isArray(b.cards)) return toast("Das ist keine FC-Trader-Sicherung", true);
+  if (![APP, "FC Trader"].includes(b?.app) || !Array.isArray(b.cards)) return toast("Das ist keine gültige Sicherung", true);
   const body = `<div class="form"><div class="group"><div class="calc">
     <div class="l"><span>Erstellt</span><span>${esc(new Date(b.created).toLocaleString("de-DE"))}</span></div>
     <div class="l"><span>Spieler</span><span class="num">${b.cards.length}</span></div>
@@ -879,11 +993,12 @@ function openRanking() {
 // ---------- Import / Export ----------
 function openImport() {
   const body = `<div class="form">
-    <p class="meta" style="white-space:normal;margin:0">Wähle eure Excel-Datei (.xlsx) oder eine CSV des Reiters „Spieler“. Erkannt werden die Spalten Name, Rating, ChemieStyle, EK, EK Datum, VK und VK Datum.</p>
+    <p class="meta" style="white-space:normal;margin:0">Wähle eine Excel-Datei (.xlsx) oder CSV. Erkannt werden die Spalten Name, Rating, Chemistry Style, EK, EK Datum, VK und VK Datum (Reihenfolge egal, Kopfzeile nötig). <a href="#" id="imp-tpl">Vorlage herunterladen</a></p>
     <label class="secondary" for="imp-file" style="text-align:center">Datei auswählen</label>
     <input class="hidden" type="file" id="imp-file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
     <div id="imp-result"></div></div>`;
   sheet("Excel importieren", body);
+  $("imp-tpl").onclick = e => { e.preventDefault(); download("Denex-Trading-Vorlage.csv", "Name;Rating;Chemistry Style;EK;EK Datum;VK;VK Datum;Notiz\nMustermann;84;Basic;1500;01.10.2026;2600;02.10.2026;Beispiel – Zeile löschen"); };
   let parsed = null;
   $("imp-file").onchange = async e => {
     const file = e.target.files[0]; if (!file) return;
@@ -900,7 +1015,7 @@ function openImport() {
         ${parsed.skipped.length ? `<div class="group"><div class="gh">${parsed.skipped.length} Zeilen übersprungen</div><div class="calc">${parsed.skipped.slice(0, 15).map(s => `<div class="l"><span>Zeile ${s.line}</span><span>${esc(s.reason)}</span></div>`).join("")}</div></div>` : ""}
         <button class="primary" id="imp-go">${parsed.cards.length} Spieler importieren</button>
         <p class="hint">Ein erneuter Import derselben Datei überschreibt die Einträge, statt sie zu verdoppeln.</p>`
-        : '<div class="err">In der Datei wurden keine Spieler gefunden. Erwartet wird der Reiter „Spieler“ mit den Spalten Name und EK.</div>';
+        : '<div class="err">In der Datei wurden keine Spieler gefunden. Nötig sind mindestens die Spalten Name und EK.</div>';
       if ($("imp-go")) $("imp-go").onclick = async () => {
         $("imp-go").disabled = true; $("imp-go").textContent = "Wird importiert …";
         // Einkaufslisten-Status bereits vorhandener Karten beim erneuten Import behalten
@@ -912,7 +1027,7 @@ function openImport() {
 }
 function exportCSV() {
   const d = iso => iso ? fmtDate(parseDay(iso)).replace(/\.(\d\d)$/, ".20$1") : "";
-  const lines = ["Name;Rating;ChemieStyle;EK;EK Datum;kalk. VK;VK;VK Datum;EA Tax;Gewinn;Marge %;Notiz"];
+  const lines = ["Name;Rating;Chemistry Style;EK;EK Datum;kalk. VK;VK;VK Datum;Tax;Gewinn;Marge %;Notiz"];
   for (const c of [...S.data.cards].sort((a, b) => a.ekDate.localeCompare(b.ekDate))) {
     const p = isSold(c) ? profitOf(c.ek, c.vk) : null;
     lines.push([c.name, c.rating, c.chem, c.ek, d(c.ekDate), target(c.ek), c.vk ?? "", d(c.vkDate), isSold(c) ? tax(c.vk) : "",
@@ -1046,13 +1161,34 @@ function openBulkSell(items) {
 
 // ---------- Start ----------
 let unsub = null;
+async function openApp(depot) {
+  if (unsub) { unsub(); unsub = null; }
+  closeSheet();
+  settings.depot = depot;
+  renderShell();
+  unsub = S.subscribe(() => { setTiers(savedTiers(), S.data.settings.markupAbove); render(); });
+  await S.connect({ depot, demoSeed });
+  render();
+}
+async function refreshProfile() {
+  account.profile = await cloud.ensureProfile(account.user, pendingName);
+  settings.name = account.profile.name || settings.name;
+  return account.profile;
+}
 async function start() {
   if (unsub) { unsub(); unsub = null; }
   closeSheet();
-  if (!settings.name || !settings.depot) return renderOnboarding();
-  renderShell();
-  unsub = S.subscribe(() => render());
-  await S.connect({ config: CLOUD ? window.FIREBASE_CONFIG : null, depot: settings.depot, demoSeed });
-  render();
+  if (!CLOUD) return LS.get("dxt-demo") ? openApp("DEMO") : renderAuth();
+  root.innerHTML = '<div class="onb"><div class="empty">Wird geladen …</div></div>';
+  let current = null;
+  await cloud.onUser(async user => {
+    account.user = user;
+    if (!user) { account.profile = null; current = null; return LS.get("dxt-demo") ? openApp("DEMO") : renderAuth(); }
+    LS.set("dxt-demo", null);
+    try {
+      const p = await refreshProfile();
+      if (current !== p.depotId) { current = p.depotId; openApp(p.depotId); }
+    } catch (e) { renderAuth("login", "Anmeldung fehlgeschlagen: " + cloud.message(e)); }
+  }).catch(e => renderAuth("login", "Keine Verbindung: " + cloud.message(e)));
 }
 start();

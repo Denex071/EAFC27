@@ -1,0 +1,7 @@
+@import url("css/app.css");
+.legal{max-width:680px;margin:0 auto;padding:24px 16px 48px;line-height:1.55}
+.legal h1{font:800 34px/1.1 var(--display);margin:0 0 12px}
+.legal h2{font:700 21px/1.2 var(--display);margin:28px 0 8px}
+.legal a{color:var(--gold)}
+.legal .todo{background:rgba(240,168,65,.14);color:var(--warn);border-radius:4px;padding:0 4px}
+.legal .back{display:inline-block;margin-bottom:16px}
