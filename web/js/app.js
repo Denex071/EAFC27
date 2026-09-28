@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.2.4";
+const VERSION = "1.2.5";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -235,6 +235,8 @@ function render() {
   const openBuys = restockOpen().length;
   badge.hidden = !openBuys; badge.textContent = openBuys > 99 ? "99+" : openBuys;
   const top = [];
+  if (newVersion) top.push(`<div class="banner" style="display:flex;gap:10px;align-items:center;border-style:solid"><span style="flex:1">Neue Version ${esc(newVersion)} verfügbar.</span>
+    <button class="mini gold" data-act="update">Aktualisieren</button></div>`);
   if (S.data.error) top.push(`<div class="err">${esc(S.data.error)}</div>`);
   if (S.data.mode === "demo") top.push(`<div class="banner">Demo-Modus – Daten bleiben nur in diesem Browser.</div>`);
   if (S.data.pending) {
@@ -595,6 +597,27 @@ function moreHtml() {
     <p class="hint">FC Trader ${VERSION} · ${demo ? "Demo" : "Cloud"}</p>`;
 }
 
+// ---------- Update-Prüfung ----------
+// version.json wird bei jeder neuen Version mit hochgezählt; die installierte App prüft beim Öffnen/Zurückkehren.
+let newVersion = null;
+async function checkUpdate() {
+  try {
+    const v = (await (await fetch("version.json", { cache: "no-store" })).json()).version;
+    if (v && v !== VERSION && v !== newVersion) { newVersion = v; render(); }
+  } catch (e) { /* offline */ }
+}
+async function applyUpdate() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+    await Promise.all(regs.map(r => r.update().catch(() => {})));
+    const keys = await caches?.keys?.() || [];
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch (e) { /* egal */ }
+  location.reload();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(); });
+setTimeout(checkUpdate, 1500);
+
 function onViewClick(e) {
   const t = e.target;
   const sell = t.closest("[data-sell]"); if (sell) { e.stopPropagation(); return openSell(S.data.cards.find(c => c.id === sell.dataset.sell)); }
@@ -615,6 +638,7 @@ function onViewClick(e) {
   const a = t.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "ranking") openRanking();
+  if (act === "update") applyUpdate();
   if (act === "goal") openGoal();
   if (act === "stale") openStale();
   if (act === "backup") downloadBackup();
