@@ -1,15 +1,11 @@
-// Firebase-Konfiguration für den gemeinsamen Betrieb.
-// Aus der Firebase-Konsole: Projekteinstellungen → Allgemein → Deine Apps → Web-App → „Konfiguration“.
-// Solange hier null steht, läuft die App im Demo-Modus (Daten nur in diesem Browser).
-window.FIREBASE_CONFIG = null;
-
-/* Beispiel:
+// Firebase-Konfiguration für den gemeinsamen Betrieb (Projekt eafc27-8f2a4).
+// Die Werte sind nicht geheim; der Zugriff wird über die Firestore-Regeln und den Depot-Code geschützt.
+// Ist hier null eingetragen, läuft die App im Demo-Modus (Daten nur in diesem Browser).
 window.FIREBASE_CONFIG = {
-  apiKey: "AIza…",
-  authDomain: "fc-trader-xyz.firebaseapp.com",
-  projectId: "fc-trader-xyz",
-  storageBucket: "fc-trader-xyz.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abc123",
+  apiKey: "AIzaSyDHRPZzJ4eK82rqj23H4BfD3u6P4KCTDZU",
+  authDomain: "eafc27-8f2a4.firebaseapp.com",
+  projectId: "eafc27-8f2a4",
+  storageBucket: "eafc27-8f2a4.firebasestorage.app",
+  messagingSenderId: "35079024131",
+  appId: "1:35079024131:web:a46f1826fe52afe98be836",
 };
-*/
