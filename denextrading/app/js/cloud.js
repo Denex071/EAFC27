@@ -14,6 +14,7 @@ export function init() {
     const fb = await import("../vendor/firebase.js");
     const app = fb.initializeApp(window.FIREBASE_CONFIG);
     const auth = fb.getAuth(app);
+    auth.languageCode = "de"; // E-Mails (Passwort zurücksetzen) und Firebase-Seiten auf Deutsch
     let db;
     try { db = fb.initializeFirestore(app, { localCache: fb.persistentLocalCache({ tabManager: fb.persistentMultipleTabManager() }) }); }
     catch (e) { db = fb.getFirestore(app); }
@@ -47,6 +48,9 @@ const MESSAGES = {
   "auth/network-request-failed": "Keine Verbindung zum Internet.",
   "auth/requires-recent-login": "Bitte zur Sicherheit dein Passwort erneut eingeben.",
   "permission-denied": "Keine Berechtigung.",
+  "auth/expired-action-code": "Der Link ist abgelaufen. Bitte fordere einen neuen an.",
+  "auth/invalid-action-code": "Der Link ist ungültig oder wurde schon benutzt. Bitte fordere einen neuen an.",
+  "auth/unauthorized-continue-uri": "Diese Adresse ist in Firebase nicht als autorisierte Domain eingetragen.",
 };
 export const message = e => MESSAGES[e?.code] || e?.message || String(e);
 
@@ -62,7 +66,22 @@ export async function login(email, password) {
 }
 export async function resetPassword(email) {
   const { fb, auth } = await init();
-  await fb.sendPasswordResetEmail(auth, email.trim());
+  // Nach dem Zurücksetzen führt die eigene Seite (aktion.html) zurück in die App
+  try { await fb.sendPasswordResetEmail(auth, email.trim(), { url: new URL("./", location.href).href }); }
+  catch (e) {
+    // Domain (noch) nicht autorisiert → ohne Rücksprung-Link senden
+    if (e.code !== "auth/unauthorized-continue-uri" && e.code !== "auth/invalid-continue-uri") throw e;
+    await fb.sendPasswordResetEmail(auth, email.trim());
+  }
+}
+/// Für aktion.html: Code aus der E-Mail prüfen und neues Passwort setzen.
+export async function checkResetCode(code) {
+  const { fb, auth } = await init();
+  return fb.verifyPasswordResetCode(auth, code); // liefert die E-Mail-Adresse
+}
+export async function confirmReset(code, password) {
+  const { fb, auth } = await init();
+  await fb.confirmPasswordReset(auth, code, password);
 }
 /// Abmelden und den lokalen Zwischenspeicher leeren (wichtig auf geteilten Geräten).
 export async function logout() {
