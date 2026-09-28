@@ -5,10 +5,11 @@ import * as cloud from "./cloud.js";
 import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, signed, compact, pct, parseCoins,
   DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, priceStep, setTiers, DEFAULT_TIERS, DEFAULT_ABOVE } from "./calc.js";
 import * as I from "./insights.js";
+import { RECOMMENDATIONS } from "./recommendations.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "0.2.0-beta";
+const VERSION = "0.3.0-beta";
 const APP = "Denex Trading";
 
 // ---------- Einstellungen (pro Gerät) ----------
@@ -208,10 +209,10 @@ function renderAuth(mode = "login", note = "") {
 let pendingName = "";
 
 // ---------- Hauptansicht ----------
-const ui = { tab: LS.get("dxt-tab") || "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9, wsel: 7,
+const ui = { tab: ["dash", "list", "buy", "tips", "more"].includes(LS.get("dxt-tab")) ? LS.get("dxt-tab") : "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9, wsel: 7,
   dim: LS.get("dxt-dim") || "price", range: "all" };
-const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", wealth: "Vermögen", more: "Einstellungen" };
-const TABS = ["dash", "list", "buy", "wealth", "more"];
+const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", tips: "Empfehlungen", more: "Einstellungen" };
+const TABS = ["dash", "list", "buy", "tips", "more"];
 const ICONS = {
   scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 10h8M8 14h5"/></svg>',
   add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -219,6 +220,7 @@ const ICONS = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>',
   wealth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
+  tips: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
 };
 
@@ -262,7 +264,10 @@ function render() {
     clearTimeout(render.pendingTimer); render.pendingTimer = setTimeout(render, 9000);
   } else if (S.data.offline && S.data.mode === "cloud") top.push(`<div class="banner">Offline – Änderungen werden gespeichert, sobald wieder eine Verbindung besteht.</div>`);
   if (!S.data.ready) { view.innerHTML = top.join("") + `<div class="empty">Daten werden geladen …</div>`; return; }
-  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, wealth: wealthHtml, more: moreHtml })[ui.tab || "dash"]();
+  const b = beta();
+  if (b.expired) { view.innerHTML = top.join("") + betaEndedHtml(); return; }
+  if (b.active) top.push(betaBannerHtml(b));
+  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, tips: tipsHtml, more: moreHtml })[ui.tab || "dash"]();
   if (ui.tab === "list") bindListInputs();
 }
 
@@ -528,6 +533,7 @@ function openBuy(key) {
   const qty = () => $("k-qty") ? +$("k-qty").value : 1;
   const refresh = sheet("Nachkauf erfassen", body, "Gekauft", () => {
     const ek = parseCoins($("k-ek").value), n = qty();
+    if (!allowNew(n)) return;
     for (let i = 0; i < n; i++) {
       S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, ek, ekDate: $("k-date").value || toISODate(new Date()),
         vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i });
@@ -550,6 +556,56 @@ function openBuy(key) {
   });
   $("k-ek").addEventListener("input", upd);
   upd();
+}
+
+// ---------- Beta-Zugang ----------
+// Gilt pro Depot: Start = Anlage des Depots; Depots mit „unlimited: true“ (nur in der Firebase-Konsole setzbar) sind ausgenommen.
+const BETA = { hours: 24, maxEntries: 50, ...(window.BETA || {}) };
+function beta() {
+  const d = account.profile?.depot;
+  if (S.data.mode !== "cloud" || !d || d.unlimited) return { active: false };
+  const start = d.created?.toMillis?.() || Date.now();
+  const endsAt = start + BETA.hours * 3600e3, left = endsAt - Date.now();
+  const count = S.data.cards.length;
+  return { active: true, endsAt, left, count, max: BETA.maxEntries, expired: left <= 0, full: count >= BETA.maxEntries };
+}
+/// Prüft vor dem Anlegen neuer Einträge das Beta-Limit. n = Anzahl neuer Karten.
+function allowNew(n = 1) {
+  const b = beta(); if (!b.active) return true;
+  if (b.expired) { toast("Die Beta-Phase ist beendet", true); render(); return false; }
+  if (b.count + n > b.max) { toast(`Beta-Limit: höchstens ${b.max} Einträge (noch ${Math.max(0, b.max - b.count)} frei)`, true); return false; }
+  return true;
+}
+const leftText = ms => { const h = Math.floor(ms / 3600e3), m = Math.floor(ms % 3600e3 / 60e3); return h ? `${h} Std ${m} Min` : `${m} Min`; };
+function betaBannerHtml(b) {
+  const warn = b.full || b.left < 3 * 3600e3 || b.max - b.count <= 5;
+  return `<div class="${warn ? "err" : "banner"}" style="display:flex;gap:8px;align-items:center;${warn ? "" : "border-style:solid"}">
+    <span class="tag listed" style="margin:0">BETA</span><span style="flex:1">noch ${leftText(b.left)} · ${b.count} von ${b.max} Einträgen${b.full ? " – Limit erreicht" : ""}</span></div>`;
+}
+function betaEndedHtml() {
+  return `<section class="card" style="text-align:center;align-items:center">
+    <img src="icons/icon-192.png" alt="" width="64" height="64" style="border-radius:16px">
+    <h2>Die Beta-Phase ist beendet</h2>
+    <p class="meta" style="white-space:normal;margin:0">Danke fürs Testen von ${APP}! Dein Testzugang war ${BETA.hours} Stunden gültig.
+      Deine Einträge kannst du weiterhin als Backup oder CSV herunterladen.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <button class="mini gold" data-act="backup">Backup herunterladen</button><button class="mini" data-act="export">CSV exportieren</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+      <button class="mini" data-act="logout">Abmelden</button><button class="mini" data-act="delete" style="color:var(--bad)">Konto löschen</button></div></section>
+    ${legalLinks}`;
+}
+setInterval(() => { if (beta().active) render(); }, 60e3); // Restzeit aktuell halten, Sperre pünktlich zeigen
+
+// ---------- Empfehlungen ----------
+function tipsHtml() {
+  return `<section class="card"><h2>Empfehlungen</h2>
+      <p class="meta" style="white-space:normal;margin:0">Die folgenden Spieler sind <b>Beispiele</b>, mit denen Trading funktionieren kann – als erste Idee für den Einstieg, keine Garantie.
+        Gekauft werden die Spieler zu den <b>normalen Marktpreisen</b>. Der Aufschlag zeigt, wie viel du beim Verkauf ungefähr auf deinen Einkaufspreis draufschlagen kannst.</p></section>
+    <div class="list">${RECOMMENDATIONS.map(([name, rating, chem, add], i) => `<div class="item" style="cursor:default">${badge(rating)}
+      <div class="grow" style="min-width:0"><div class="name">${esc(name)}</div><div class="meta">${esc(chem)}</div></div>
+      <div class="right"><div class="num" style="font-weight:700;color:var(--good)">+${fmt(add)}</div><div class="meta">Aufschlag</div></div>
+      <button class="mini gold" data-rec="${i}">Gekauft</button></div>`).join("")}</div>
+    <p class="hint">„Gekauft“ öffnet den Kauf mit Name, Rating und Chemistry Style – du trägst nur noch deinen Einkaufspreis ein.</p>`;
 }
 
 function wealthHtml() {
@@ -619,6 +675,7 @@ function firstStepsHtml() {
       '<label class="mini" for="scanInput" style="display:inline-block;margin-top:6px">Screenshot wählen</label>')}
     ${step(3, "Verkaufen", "In der Spielerliste bei der Karte auf <b>VK</b> tippen und den Verkaufspreis eintragen – der Gewinn nach 5 % Tax wird sofort berechnet.")}
     ${step(4, "Nachkaufen", "Verkaufte Karten landen im Tab <b>Einkauf</b>. Dort siehst du den letzten EK und den maximalen EK, der sich noch lohnt.")}
+    <div class="stat-line">Keine Idee, womit du anfangen sollst? Im Tab <b>Empfehlungen</b> findest du Beispiel-Spieler.</div>
     <button class="secondary" data-act="help">Ausführliche Anleitung</button></section>`;
 }
 
@@ -671,11 +728,12 @@ const HELP = [
     <li><b>Ladenhüter:</b> Karten, die schon lange im Club liegen – direkt Preis anpassen oder verkaufen.</li>
     <li><b>Was lohnt sich?</b> Gewinn pro Tag nach Preisklasse, Style, Rating und Wochentag – zeigt, womit deine Coins am schnellsten arbeiten.</li>
     <li>Diagramme lassen sich antippen.</li></ul>`],
-  ["Vermögen", `<p>Einmal pro Woche unter <b>Vermögen</b> deinen Stand eintragen (Teamwert, Transferliste, Coins). Die App zeigt das Gesamtvermögen und die Veränderung zur Vorwoche.</p>`],
+  ["Empfehlungen", `<p>Im Tab <b>Empfehlungen</b> findest du Beispiel-Spieler, mit denen Trading funktionieren kann – als Idee für den Einstieg. Gekauft wird zu normalen Marktpreisen; der Aufschlag zeigt, wie viel du beim Verkauf ungefähr draufschlagen kannst. Mit <b>Gekauft</b> ist der Kauf direkt vorausgefüllt.</p>`],
   ["Mit einem Partner zusammen traden", `<p>Unter <b>Einstellungen → Team → Partner einladen</b> einen Code erzeugen und teilen. Dein Partner legt ein eigenes Konto an und tritt mit dem Code bei – ihr seht dann dieselben Daten in Echtzeit.</p>`],
   ["Einstellungen", `<ul><li><b>Wochenziel</b>, <b>Mindestgewinn</b> (für den max. EK) und ab wann eine Karte als <b>Ladenhüter</b> gilt.</li>
     <li><b>kalk. VK – Aufschläge:</b> wie viel du je Preisklasse auf den EK aufschlägst.</li>
     <li><b>Backup</b> einmal pro Woche herunterladen; <b>CSV-Export</b> für Excel.</li></ul>`],
+  ["Beta-Zugang", `<p>Die Beta ist ${BETA.hours} Stunden ab der Registrierung nutzbar, mit höchstens ${BETA.maxEntries} Einträgen. Restzeit und Einträge siehst du oben im Banner. Danach kannst du deine Daten weiterhin als Backup oder CSV herunterladen.</p>`],
   ["Als App auf dem Handy", `<ul><li><b>iPhone:</b> in Safari auf <b>Teilen</b> → <b>„Zum Home-Bildschirm“</b>.</li>
     <li><b>Android:</b> in Chrome im Menü (⋮) → <b>„App installieren“</b> bzw. „Zum Startbildschirm hinzufügen“.</li></ul>
     <p>Danach startet Denex Trading im Vollbild wie eine normale App.</p>`],
@@ -746,6 +804,7 @@ function onViewClick(e) {
   const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("dxt-dim", ui.dim); return render(); }
   const dt = t.closest("[data-deltier]"); if (dt) { const rows = readTiers(); rows.splice(+dt.dataset.deltier, 1); return saveTiers(rows); }
   const kick = t.closest("[data-kick]"); if (kick) return confirmButton(kick, "Sicher?", () => teamAction("kick", kick, kick.dataset.kick));
+  const rec = t.closest("[data-rec]"); if (rec) { const [name, rating, chem] = RECOMMENDATIONS[+rec.dataset.rec]; return openAdd(null, { name, rating, chem }); }
   const lp = t.closest("[data-listp]"); if (lp) { e.stopPropagation(); return openList(S.data.cards.find(c => c.id === lp.dataset.listp)); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
@@ -852,8 +911,9 @@ function sheet(title, body, actionLabel, onAction, canAct) {
 const closeSheet = () => { layer.innerHTML = ""; };
 const $ = id => document.getElementById(id);
 
-function openAdd(existing) {
-  const c = existing || { name: "", rating: "", chem: "Basic", ek: "", ekDate: toISODate(new Date()), vk: null, vkDate: null, notes: "" };
+function openAdd(existing, preset) {
+  if (!existing && !allowNew(1)) return;
+  const c = existing || { name: "", rating: "", chem: "Basic", ek: "", ekDate: toISODate(new Date()), vk: null, vkDate: null, notes: "", ...(preset || {}) };
   const body = `<form class="form" id="f" autocomplete="off">
     <div class="group"><div class="gh">Spieler</div>
       <div class="field"><label for="f-name">Name</label><input id="f-name" value="${esc(c.name)}" placeholder="z. B. Musiala"></div>
@@ -879,7 +939,7 @@ function openAdd(existing) {
       : '<button type="button" class="primary" id="f-next">Sichern &amp; nächste Karte</button>'}
   </form>`;
   const valid = () => $("f-name").value.trim() && +$("f-rating").value >= 1 && +$("f-rating").value <= 99 && parseCoins($("f-ek").value) > 0;
-  const refresh = sheet(existing ? "Spieler bearbeiten" : "Kauf erfassen", body, "Sichern", () => { save(); closeSheet(); toast("Gespeichert"); }, valid);
+  const refresh = sheet(existing ? "Spieler bearbeiten" : "Kauf erfassen", body, "Sichern", () => { if (save() === false) return; closeSheet(); toast("Gespeichert"); }, valid);
   function update() {
     const ek = parseCoins($("f-ek").value);
     $("f-calc-buy").innerHTML = calcHtml(ek, null);
@@ -893,6 +953,7 @@ function openAdd(existing) {
     refresh();
   }
   function save() {
+    if (!existing && !allowNew(1)) return false;
     const card = existing ? { ...existing } : { id: S.newId(), owner: settings.name, createdAt: Date.now() };
     Object.assign(card, { name: $("f-name").value.trim(), rating: +$("f-rating").value, chem: $("f-chem").value,
       ek: parseCoins($("f-ek").value), ekDate: $("f-ekd").value || toISODate(new Date()), notes: $("f-notes").value.trim() });
@@ -911,7 +972,7 @@ function openAdd(existing) {
     if (t.dataset.name) { const l = lastCard(t.dataset.name); $("f-name").value = t.dataset.name; if (l) { $("f-rating").value = l.rating; $("f-chem").value = l.chem; } $("f-ek").focus(); }
     if (t.dataset.chem) $("f-chem").value = t.dataset.chem;
     if (t.dataset.app) { $("f-ek").value += t.dataset.app; $("f-ek").focus(); }
-    if (t.id === "f-next") { save(); toast("Gespeichert – nächste Karte"); ["f-name", "f-rating", "f-ek", "f-notes"].forEach(i => $(i).value = ""); $("f-name").focus(); }
+    if (t.id === "f-next") { if (save() === false) return; toast("Gespeichert – nächste Karte"); ["f-name", "f-rating", "f-ek", "f-notes"].forEach(i => $(i).value = ""); $("f-name").focus(); }
     if (t.id === "f-list") return openList(existing);
     if (t.id === "f-restock") { S.saveCard({ ...existing, restock: "open" }); closeSheet(); return toast(`${existing.name} steht auf der Einkaufsliste`); }
     if (t.id === "f-del") return confirmButton(t, "Wirklich löschen?", () => { S.deleteCard(existing.id); closeSheet(); toast("Gelöscht"); });
@@ -1048,6 +1109,9 @@ async function restoreBackup(file) {
   let b;
   try { b = JSON.parse(await file.text()); } catch (e) { return toast("Das ist keine Backup-Datei", true); }
   if (![APP, "FC Trader"].includes(b?.app) || !Array.isArray(b.cards)) return toast("Das ist keine gültige Sicherung", true);
+  const bt = beta();
+  if (bt.active && b.cards.length > bt.max) return toast(`Beta-Limit: Das Backup enthält ${b.cards.length} Einträge, erlaubt sind ${bt.max}.`, true);
+  if (bt.expired) return toast("Die Beta-Phase ist beendet", true);
   const body = `<div class="form"><div class="group"><div class="calc">
     <div class="l"><span>Erstellt</span><span>${esc(new Date(b.created).toLocaleString("de-DE"))}</span></div>
     <div class="l"><span>Spieler</span><span class="num">${b.cards.length}</span></div>
@@ -1146,6 +1210,7 @@ function openBulkAdd(items) {
     <p class="hint">Chemistry Style wird am Symbol erkannt. Ist das unsicher, ist der zuletzt genutzte Stil des Spielers vorbelegt.</p></div>`;
   const refresh = sheet(drafts.length === 1 ? "Kauf prüfen" : `${drafts.length} Käufe prüfen`, body, "Sichern", () => {
     const date = $("b-date").value || toISODate(new Date());
+    if (!allowNew(ready().length)) return;
     let ticked = 0;
     for (const d of ready()) {
       learnIcon(d.bits, d.chem, d.recognized);

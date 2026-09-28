@@ -40,10 +40,20 @@ eigener Ordner, eigenes Firebase-Projekt, eigene Netlify-Seite. Änderungen hier
 - In der Firebase- und Netlify-Konsole jeweils den Vertrag zur Auftragsverarbeitung (DPA) akzeptieren.
 - `<meta name="robots" content="noindex">` in `index.html` entfernen, sobald die Seite in Suchmaschinen erscheinen soll.
 
+## Beta-Zugang
+- Jedes neue Depot ist **24 Stunden** ab der Registrierung nutzbar und hat höchstens **50 Einträge** (`app/config.js` → `window.BETA`).
+- Die 24 Stunden sind zusätzlich in `firestore.rules` (Funktion `betaOpen`) festgelegt – nach Ablauf lehnt die Datenbank neue Einträge ab.
+  Lesen, Backup/CSV-Export und Konto löschen bleiben möglich.
+- **Ausnahme für eigene Konten:** Firebase-Konsole → Firestore → `depots` → eigenes Depot → Feld `unlimited` (boolean) = `true`.
+  Die ID des eigenen Depots steht unter `users/{deine UID}` im Feld `depotId`.
+
+## Empfehlungen
+Der Tab „Empfehlungen“ (statt Vermögen) zeigt Beispiel-Spieler. Die Liste wird in `app/js/recommendations.js` gepflegt.
+
 ## Datenmodell
 ```
 users/{uid}                 { depotId, ownDepotId, name, email }
-depots/{id}                 { owner, members[], names{uid: Name}, name, invite }
+depots/{id}                 { owner, members[], names{uid: Name}, name, invite, created, unlimited? }
 depots/{id}/players|snapshots|chemIcons|settings   – wie in der privaten App
 invites/{code}              { depotId, owner }
 ```

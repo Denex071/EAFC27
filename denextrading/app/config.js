@@ -8,3 +8,7 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "252983943486",
   appId: "1:252983943486:web:555287e078c9744397cc6f",
 };
+
+// Beta-Zugang: Dauer ab Registrierung (Stunden) und maximale Anzahl Einträge (Spieler) pro Depot.
+// Die Dauer ist zusätzlich in firestore.rules festgelegt (dort ebenfalls anpassen).
+window.BETA = { hours: 24, maxEntries: 50 };

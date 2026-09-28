@@ -7,6 +7,9 @@ service cloud.firestore {
     function uid() { return request.auth.uid; }
     function depot(id) { return get(/databases/$(database)/documents/depots/$(id)).data; }
     function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    // Beta: Schreiben nur in den ersten 24 Stunden nach Anlage des Depots.
+    // Ausnahme: Depot mit unlimited == true (nur in der Firebase-Konsole setzbar, z. B. für das eigene Konto).
+    function betaOpen(d) { return d.get('unlimited', false) == true || request.time < d.created + duration.value(24, 'h'); }
     function namesOnlyOwn() {
       return !('names' in request.resource.data) || !('names' in resource.data)
         || request.resource.data.names.diff(resource.data.names).affectedKeys().hasOnly([uid()]);
@@ -18,12 +21,15 @@ service cloud.firestore {
     }
 
     match /depots/{depotId} {
-      allow create: if signedIn() && request.resource.data.owner == uid() && request.resource.data.members == [uid()];
+      allow create: if signedIn() && request.resource.data.owner == uid() && request.resource.data.members == [uid()]
+        && request.resource.data.created == request.time && !('unlimited' in request.resource.data);
       allow read: if signedIn() && uid() in resource.data.members;
       allow delete: if signedIn() && resource.data.owner == uid();
       allow update: if signedIn() && (
         // Besitzer: darf alles außer den Besitzer ändern und muss Mitglied bleiben
-        (resource.data.owner == uid() && request.resource.data.owner == resource.data.owner && uid() in request.resource.data.members)
+        (resource.data.owner == uid() && request.resource.data.owner == resource.data.owner && uid() in request.resource.data.members
+          && request.resource.data.created == resource.data.created
+          && request.resource.data.get('unlimited', false) == resource.data.get('unlimited', false))
         // Mitglied: nur den eigenen Namen ändern
         || (uid() in resource.data.members && onlyChanged(['names']) && namesOnlyOwn())
         // Beitreten (mit Code): nur sich selbst hinzufügen, höchstens 5 Mitglieder
@@ -41,7 +47,9 @@ service cloud.firestore {
 
       // Daten (players, snapshots, chemIcons, settings): alle Mitglieder
       match /{collection}/{docId} {
-        allow read, write: if signedIn() && uid() in depot(depotId).members;
+        allow read: if signedIn() && uid() in depot(depotId).members;
+        allow create, update: if signedIn() && uid() in depot(depotId).members && betaOpen(depot(depotId));
+        allow delete: if signedIn() && uid() in depot(depotId).members; // Löschen (z. B. Konto löschen) auch nach der Beta
       }
     }
 
