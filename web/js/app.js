@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.2.6";
+const VERSION = "1.3.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -123,12 +123,24 @@ function restockGroups() {
     return { ...g, name: newest.name, rating: newest.rating, chem: newest.chem, lastEk: newest.ek, lastVk: newest.vk, soldOn: newest.vkDate };
   }).sort((a, b) => b.soldOn.localeCompare(a.soldOn) || a.name.localeCompare(b.name));
 }
+/// Von Hand geplante Käufe als Gruppen (oben auf der Einkaufsliste)
+const wishGroups = () => [...S.data.wishes].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).map(w => ({
+  key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, lastEk: w.price, lastVk: null, soldOn: null, items: Array(w.qty || 1).fill(w) }));
+const allBuyGroups = () => [...wishGroups(), ...restockGroups()];
+const openBuyCount = () => restockOpen().length + sum(S.data.wishes.map(w => w.qty || 1));
+/// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen
+function useWish(w, n = 1) { (w.qty || 1) > n ? S.saveWish({ ...w, qty: w.qty - n }) : S.deleteWish(w.id); }
+
 /// Neuer Kauf erfasst → passenden offenen Listeneintrag (gleicher Spieler & Rating, bevorzugt gleicher Stil) abhaken.
 function consumeRestock(card) {
   const match = restockOpen().filter(c => sameName(c.name, card.name) && c.rating === card.rating)
     .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem) || a.vkDate.localeCompare(b.vkDate))[0];
-  if (match) S.saveCard({ ...match, restock: "done" });
-  return !!match;
+  if (match) { S.saveCard({ ...match, restock: "done" }); return true; }
+  // sonst einen von Hand geplanten Kauf (gleicher Spieler & Rating) abhaken
+  const wish = S.data.wishes.filter(w => sameName(w.name, card.name) && w.rating === card.rating)
+    .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem))[0];
+  if (wish) useWish(wish);
+  return !!wish;
 }
 
 // ---------- Bausteine ----------
@@ -232,7 +244,7 @@ function render() {
   document.getElementById("title").textContent = ui.tab === "dash" ? "EA FC 27 Trading" : TITLES[ui.tab];
   root.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false"));
   const badge = root.querySelector('[data-badge="buy"]');
-  const openBuys = restockOpen().length;
+  const openBuys = openBuyCount();
   badge.hidden = !openBuys; badge.textContent = openBuys > 99 ? "99+" : openBuys;
   const top = [];
   if (newVersion) top.push(`<div class="banner" style="display:flex;gap:10px;align-items:center;border-style:solid"><span style="flex:1">Neue Version ${esc(newVersion)} verfügbar.</span>
@@ -468,35 +480,66 @@ function bindListInputs() {
 }
 
 function buyHtml() {
-  const groups = restockGroups();
+  const groups = allBuyGroups();
+  const addBtn = '<button class="secondary" data-act="wish">+ Spieler zur Einkaufsliste</button>';
   if (!groups.length) return `<section class="card"><h2>Alles nachgekauft</h2>
-    <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.</p></section>`;
+    <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.
+      Spieler, die ihr noch kaufen wollt, könnt ihr auch selbst hinzufügen.</p></section>${addBtn}`;
   const { minProfit } = cfg();
   groups.forEach(g => { g.st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, minProfit); });
   const count = sum(groups.map(g => g.items.length));
   const budget = sum(groups.map(g => g.lastEk * g.items.length));
   return `<section class="tiles">
       <div class="tile"><div class="t">Nachzukaufen</div><div class="v num">${count}</div><div class="d">${groups.length} verschiedene Karten</div></div>
-      <div class="tile"><div class="t">Budget (letzter EK)</div><div class="v num">${fmt(budget)}</div><div class="d">Coins für alle Käufe</div></div></section>
+      <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">Coins für alle Käufe</div></div></section>
+    ${addBtn}
     <div class="list">${groups.map(g => `<div class="item" style="cursor:default">
       ${badge(g.rating)}
-      <div class="grow" style="min-width:0"><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}</div>
-        <div class="meta">${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}</div>
+      <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}</div>
+        <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)} · von ${esc(g.wish.owner || "euch")} geplant` : `${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
         ${g.st ? `<div class="stat-line">${g.st.n}× gedreht · Ø <b>${signed(g.st.avg)}</b> · ${holdText(g.st.hold)}${g.st.maxEk ? ` · max. EK <b>${fmt(g.st.maxEk)}</b>` : ""}${g.st.maxEk && g.lastEk > g.st.maxEk ? '<span class="tag alert">teuer</span>' : ""}</div>` : ""}</div>
       <div class="right" style="display:flex;gap:6px">
         <button class="mini" data-skip="${esc(g.key)}" aria-label="Überspringen" title="Überspringen">✕</button>
         <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`).join("")}</div>
-    <p class="hint">„Gekauft“ speichert die Karte als neuen Kauf – nur den EK anpassen. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
+    <p class="hint">„Gekauft“ speichert die Karte als neuen Kauf – nur den EK anpassen. Geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
       max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
 }
 
+/// Spieler von Hand auf die Einkaufsliste setzen bzw. bearbeiten
+function openWish(existing) {
+  const w = existing || { name: "", rating: "", chem: "Basic", price: "", qty: 1 };
+  const body = `<form class="form" id="wf" autocomplete="off">
+    <div class="group">
+      <div class="field"><label for="w-name">Name</label><input id="w-name" value="${esc(w.name)}" list="known-names" placeholder="z. B. Musiala"></div>
+      <div class="field"><label for="w-rating">Rating</label><input id="w-rating" inputmode="numeric" value="${w.rating}" placeholder="z. B. 84"></div>
+      <div class="field"><label for="w-chem">Chemistry Style</label><select id="w-chem">${chemOptions(w.chem)}</select></div>
+      <div class="field"><label for="w-price">Preis (EK)</label><input id="w-price" inputmode="decimal" value="${w.price}" placeholder="0"></div>
+      <div class="field"><label for="w-qty">Anzahl</label><select id="w-qty">${[1, 2, 3, 4, 5, 6, 8, 10].map(n => `<option ${n === (w.qty || 1) ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+      <div id="w-calc"></div></div>
+    <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    ${existing ? '<button type="button" class="mini" id="w-del" style="align-self:flex-start;color:var(--bad)">Von der Liste löschen</button>' : ""}
+    <p class="hint">Der Spieler erscheint auf der Einkaufsliste. Kauft ihr ihn später (über „Gekauft“, + oder Screenshot), wird er automatisch abgehakt.</p></form>`;
+  const valid = () => $("w-name").value.trim() && +$("w-rating").value >= 1 && +$("w-rating").value <= 99 && parseCoins($("w-price").value) > 0;
+  const refresh = sheet(existing ? "Geplanten Kauf bearbeiten" : "Zur Einkaufsliste", body, "Sichern", () => {
+    const name = $("w-name").value.trim();
+    S.saveWish({ id: existing ? existing.id : S.newId(), name, rating: +$("w-rating").value, chem: $("w-chem").value,
+      price: parseCoins($("w-price").value), qty: +$("w-qty").value, owner: existing?.owner || settings.name, createdAt: existing?.createdAt || Date.now() });
+    closeSheet(); toast(existing ? "Gespeichert" : `${name} steht auf der Einkaufsliste`);
+  }, valid);
+  const upd = () => { $("w-calc").innerHTML = calcHtml(parseCoins($("w-price").value), null); refresh(); };
+  $("w-name").addEventListener("change", () => { const l = lastCard($("w-name").value); if (l) { if (!$("w-rating").value) $("w-rating").value = l.rating; $("w-chem").value = l.chem; } upd(); });
+  $("wf").addEventListener("input", upd); $("wf").addEventListener("submit", e => e.preventDefault());
+  if ($("w-del")) $("w-del").onclick = e => confirmButton(e.target, "Wirklich löschen?", () => { S.deleteWish(existing.id); closeSheet(); toast("Gelöscht"); });
+  upd();
+}
+
 function openBuy(key) {
-  const g = restockGroups().find(x => x.key === key); if (!g) return;
+  const g = allBuyGroups().find(x => x.key === key); if (!g) return;
   const step = priceStep;
   const st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, cfg().minProfit);
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(g.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(g.name)}</div>
-      <div class="meta">zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}</div></div></div></div>
+      <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
     ${st ? `<div class="group"><div class="gh">Bisher ${st.n}× gedreht${st.sameStyle ? "" : " (alle Styles)"}</div>
       <div class="calc"><div class="l"><span>Ø Gewinn · Haltedauer</span><span class="num">${signed(st.avg)} · ${holdText(st.hold)}</span></div>
         <div class="l"><span>Erwarteter VK (Mittel letzte 3)</span><span class="num">${fmt(st.expVk)}</span></div>
@@ -506,21 +549,22 @@ function openBuy(key) {
     <div class="group"><div class="gh">Nachkauf</div>
       <div class="field"><label for="k-ek">Einkaufspreis</label><input id="k-ek" inputmode="decimal" value="${g.lastEk}"></div>
       <div class="chips"><button type="button" class="chip" data-d="-1">− Stufe</button><button type="button" class="chip" data-d="1">+ Stufe</button>
-        <button type="button" class="chip" data-d="0">Letzter EK</button>${st?.maxEk ? `<button type="button" class="chip" data-max="1">max. EK ${compact(st.maxEk)}</button>` : ""}<button type="button" class="chip" data-app="000">+000</button></div>
+        <button type="button" class="chip" data-d="0">${g.wish ? "Geplanter EK" : "Letzter EK"}</button>${st?.maxEk ? `<button type="button" class="chip" data-max="1">max. EK ${compact(st.maxEk)}</button>` : ""}<button type="button" class="chip" data-app="000">+000</button></div>
       <div id="k-warn"></div>
       ${g.items.length > 1 ? `<div class="field"><label for="k-qty">Anzahl</label><select id="k-qty">${g.items.map((_, i) => `<option ${i === 0 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}
       <div class="field"><label for="k-chem">Chemistry Style</label><select id="k-chem">${chemOptions(g.chem)}</select></div>
       <div class="field"><label for="k-date">Kaufdatum</label><input id="k-date" type="date" value="${toISODate(new Date())}"></div>
       <div id="k-calc"></div></div></div>`;
   const qty = () => $("k-qty") ? +$("k-qty").value : 1;
-  const refresh = sheet("Nachkauf erfassen", body, "Gekauft", () => {
+  const refresh = sheet(g.wish ? "Kauf erfassen" : "Nachkauf erfassen", body, "Gekauft", () => {
     const ek = parseCoins($("k-ek").value), n = qty();
     for (let i = 0; i < n; i++) {
       S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, ek, ekDate: $("k-date").value || toISODate(new Date()),
         vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i });
-      S.saveCard({ ...g.items[i], restock: "done" });
+      if (!g.wish) S.saveCard({ ...g.items[i], restock: "done" });
     }
-    closeSheet(); toast(n > 1 ? `${n}× ${g.name} nachgekauft` : `${g.name} nachgekauft`);
+    if (g.wish) useWish(g.wish, n);
+    closeSheet(); toast(n > 1 ? `${n}× ${g.name} gekauft` : `${g.name} gekauft`);
   }, () => parseCoins($("k-ek").value) > 0);
   const upd = () => {
     const ek = parseCoins($("k-ek").value);
@@ -629,15 +673,18 @@ function onViewClick(e) {
   const lp = t.closest("[data-listp]"); if (lp) { e.stopPropagation(); return openList(S.data.cards.find(c => c.id === lp.dataset.listp)); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
+  const wi = t.closest("[data-wish]"); if (wi) return openWish(S.data.wishes.find(w => w.id === wi.dataset.wish));
   const buy = t.closest("[data-buy]"); if (buy) return openBuy(buy.dataset.buy);
   const skip = t.closest("[data-skip]");
   if (skip) return confirmButton(skip, "Überspringen?", () => {
-    const g = restockGroups().find(x => x.key === skip.dataset.skip);
-    if (g) { S.saveCard({ ...g.items[0], restock: "skip" }); toast(`${g.name} von der Liste genommen`); }
+    const g = allBuyGroups().find(x => x.key === skip.dataset.skip);
+    if (g?.wish) { S.deleteWish(g.wish.id); toast(`${g.name} von der Liste genommen`); }
+    else if (g) { S.saveCard({ ...g.items[0], restock: "skip" }); toast(`${g.name} von der Liste genommen`); }
   });
   const a = t.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "ranking") openRanking();
+  if (act === "wish") openWish();
   if (act === "update") applyUpdate();
   if (act === "goal") openGoal();
   if (act === "stale") openStale();
@@ -869,7 +916,7 @@ const backupAge = () => {
 const backupDue = () => S.data.mode === "cloud" && S.data.cards.length > 0 && (!+LS.get("fct-backup") || Date.now() - +LS.get("fct-backup") > 7 * DAY);
 function downloadBackup() {
   const payload = { app: "FC Trader", version: VERSION, depot: settings.depot, created: new Date().toISOString(),
-    cards: S.data.cards, snaps: S.data.snaps, icons: S.data.icons.map(({ id, style, hex }) => ({ id, style, hex })), settings: S.data.settings };
+    cards: S.data.cards, snaps: S.data.snaps, wishes: S.data.wishes, icons: S.data.icons.map(({ id, style, hex }) => ({ id, style, hex })), settings: S.data.settings };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `FC-Trader-Backup-${toISODate(new Date())}.json`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -892,6 +939,7 @@ async function restoreBackup(file) {
     if (exact) { const keep = new Set(b.cards.map(c => c.id)); for (const c of S.data.cards.filter(c => !keep.has(c.id))) await S.deleteCard(c.id); }
     await S.saveCards(b.cards);
     for (const sn of b.snaps || []) await S.saveSnap(sn);
+    for (const w of b.wishes || []) await S.saveWish(w);
     const known = new Set(S.data.icons.map(i => i.id));
     for (const i of b.icons || []) if (i.id && !known.has(i.id)) await S.saveIcon(i);
     if (b.settings && Object.keys(b.settings).length) await S.saveSettings(b.settings);

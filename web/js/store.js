@@ -2,13 +2,14 @@
 // Datenmodell identisch mit der iOS-Version:
 //   depots/{code}/players/{id}   – Karten
 //   depots/{code}/snapshots/{id} – Wochenstände
+//   depots/{code}/wishes/{id}    – von Hand geplante Käufe (Einkaufsliste)
 //   depots/{code}/chemIcons/{id} – gelernte Chemiestil-Symbole
 //   depots/{code}/settings/main  – gemeinsame Einstellungen (Wochenziel, Mindestgewinn, Ladenhüter-Tage)
 
 import { toISODate, parseDay } from "./calc.js";
 
 const listeners = new Set();
-export const data = { cards: [], snaps: [], icons: [], settings: {}, ready: false, mode: "demo", error: null, pending: 0, pendingSince: 0, offline: false };
+export const data = { cards: [], snaps: [], icons: [], wishes: [], settings: {}, ready: false, mode: "demo", error: null, pending: 0, pendingSince: 0, offline: false };
 const emit = () => listeners.forEach(fn => fn(data));
 export const subscribe = fn => { listeners.add(fn); fn(data); return () => listeners.delete(fn); };
 
@@ -23,9 +24,10 @@ function demoBackend(seed) {
   let db;
   try { db = JSON.parse(localStorage.getItem(DEMO_KEY)); } catch (e) { db = null; }
   if (!db) db = { cards: seed.cards, snaps: seed.snaps, icons: [] };
+  db.wishes ||= [];
   db.settings ||= {};
   const save = () => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch (e) {} };
-  const publish = () => { data.cards = [...db.cards]; data.snaps = [...db.snaps]; data.icons = [...db.icons]; data.settings = { ...db.settings }; data.ready = true; emit(); };
+  const publish = () => { data.cards = [...db.cards]; data.snaps = [...db.snaps]; data.icons = [...db.icons]; data.wishes = [...db.wishes]; data.settings = { ...db.settings }; data.ready = true; emit(); };
   const upsert = (list, item) => { const i = list.findIndex(x => x.id === item.id); if (i >= 0) list[i] = item; else list.push(item); };
   publish();
   return {
@@ -34,9 +36,11 @@ function demoBackend(seed) {
     async deleteCard(id) { db.cards = db.cards.filter(c => c.id !== id); save(); publish(); },
     async saveSnap(s) { upsert(db.snaps, s); save(); publish(); },
     async deleteSnap(id) { db.snaps = db.snaps.filter(s => s.id !== id); save(); publish(); },
+    async saveWish(w) { upsert(db.wishes, w); save(); publish(); },
+    async deleteWish(id) { db.wishes = db.wishes.filter(w => w.id !== id); save(); publish(); },
     async saveIcon(i) { db.icons.push(i); save(); publish(); },
     async saveSettings(v) { db.settings = { ...db.settings, ...v }; save(); publish(); },
-    reset() { try { localStorage.removeItem(DEMO_KEY); } catch (e) {} db = { cards: seed.cards, snaps: seed.snaps, icons: [], settings: {} }; publish(); },
+    reset() { try { localStorage.removeItem(DEMO_KEY); } catch (e) {} db = { cards: seed.cards, snaps: seed.snaps, icons: [], wishes: [], settings: {} }; publish(); },
     stop() {},
   };
 }
@@ -75,6 +79,10 @@ async function firestoreBackend(config, depot) {
     coins: d.coins || 0, tlOwn: d.ownTransferListValue || 0, sold: d.soldCards || 0, listed: d.listedCards || 0,
     profit: d.tradingProfit || 0, notes: d.notes || "" } : null;
 
+  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price, qty: w.qty || 1,
+    owner: w.owner || "", createdAt: fb.Timestamp.fromMillis(w.createdAt || Date.now()) });
+  const wishFrom = (id, d) => d.name ? { id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", price: d.price || 0,
+    qty: d.qty || 1, owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
   const onErr = e => { data.error = e.message; emit(); };
   const unsubs = [
     // Mit Metadaten: zeigt, ob Änderungen noch nicht bei der Cloud angekommen sind (offline / Verbindung gestört)
@@ -84,6 +92,7 @@ async function firestoreBackend(config, depot) {
       if (pending && !data.pending) data.pendingSince = Date.now();
       data.pending = pending; data.offline = s.metadata.fromCache; emit();
     }, onErr),
+    fb.onSnapshot(col("wishes"), s => { data.wishes = s.docs.map(x => wishFrom(x.id, x.data())).filter(Boolean); emit(); }, onErr),
     fb.onSnapshot(col("snapshots"), s => { data.snaps = s.docs.map(x => snapFrom(x.id, x.data())).filter(Boolean); emit(); }, onErr),
     fb.onSnapshot(fb.doc(col("settings"), "main"), s => { data.settings = s.exists() ? s.data() : {}; emit(); }, onErr),
     fb.onSnapshot(col("chemIcons"), s => { data.icons = s.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.style && x.hex); emit(); }, onErr),
@@ -100,6 +109,8 @@ async function firestoreBackend(config, depot) {
     deleteCard: id => fb.deleteDoc(fb.doc(col("players"), id)),
     saveSnap: s => fb.setDoc(fb.doc(col("snapshots"), s.id), snapTo(s)),
     deleteSnap: id => fb.deleteDoc(fb.doc(col("snapshots"), id)),
+    saveWish: w => fb.setDoc(fb.doc(col("wishes"), w.id), wishTo(w)),
+    deleteWish: id => fb.deleteDoc(fb.doc(col("wishes"), id)),
     saveIcon: i => fb.setDoc(fb.doc(col("chemIcons"), i.id), { style: i.style, hex: i.hex, createdAt: fb.Timestamp.now() }),
     saveSettings: v => fb.setDoc(fb.doc(col("settings"), "main"), v, { merge: true }),
     stop() { unsubs.forEach(u => u()); },
@@ -110,7 +121,7 @@ async function firestoreBackend(config, depot) {
 
 export async function connect({ config, depot, demoSeed }) {
   if (backend) backend.stop();
-  data.cards = []; data.snaps = []; data.icons = []; data.settings = {}; data.ready = false; data.error = null;
+  data.cards = []; data.snaps = []; data.icons = []; data.wishes = []; data.settings = {}; data.ready = false; data.error = null;
   if (config && depot && depot !== "DEMO") {
     data.mode = "cloud"; emit();
     try { backend = await firestoreBackend(config, depot); }
@@ -128,6 +139,8 @@ export const saveCard = c => { optimistic(data.cards, c); return run(backend?.sa
 export const saveCards = cs => run(backend?.saveCards(cs));
 export const deleteCard = id => { data.cards = data.cards.filter(c => c.id !== id); emit(); return run(backend?.deleteCard(id)); };
 export const saveSnap = s => { optimistic(data.snaps, s); return run(backend?.saveSnap(s)); };
+export const saveWish = w => { optimistic(data.wishes, w); return run(backend?.saveWish(w)); };
+export const deleteWish = id => { data.wishes = data.wishes.filter(w => w.id !== id); emit(); return run(backend?.deleteWish(id)); };
 export const deleteSnap = id => { data.snaps = data.snaps.filter(s => s.id !== id); emit(); return run(backend?.deleteSnap(id)); };
 export const saveIcon = i => run(backend?.saveIcon(i));
 export const saveSettings = v => { data.settings = { ...data.settings, ...v }; emit(); return run(backend?.saveSettings(v)); };
