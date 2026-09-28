@@ -1,47 +1,88 @@
-# FC Trader – EA FC 27 Trading-Tracker (iOS)
+# FC Trader – EA FC 27 Trading-Tracker
 
-Gemeinsame iPhone-App für euer gemeinsames EA FC Konto: Käufe und Verkäufe von Spielerkarten erfassen,
-Gewinn automatisch berechnen, alles in Echtzeit zwischen den iPhones synchronisiert.
+App für euer gemeinsames EA FC Konto: Käufe und Verkäufe von Spielerkarten erfassen – per Hand oder per
+Screenshot –, Gewinn automatisch berechnen, alles in Echtzeit zwischen euren iPhones synchronisiert.
 
-## Funktionen (Version 0.1)
+Das Projekt gibt es in zwei Varianten:
+
+| | **Web-App** (`web/`) – empfohlen | iOS-App (`FCTrader/`) |
+|---|---|---|
+| Installation | Safari → „Zum Home-Bildschirm“ | Xcode auf einem Mac |
+| Kosten | keine | kostenlos (7 Tage gültig) oder 99 €/Jahr |
+| Gemeinsame Daten | Firebase | Firebase (gleiche Datenbank) |
+| Texterkennung | Tesseract, läuft im Browser auf dem iPhone | Apple Vision |
+
+Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werden.
+
+---
+
+## Web-App einrichten (ca. 20 Minuten, kein Mac nötig)
+
+### 1. Firebase (gemeinsame Datenbank)
+1. <https://console.firebase.google.com> → **Projekt hinzufügen** (Google Analytics nicht nötig).
+2. **Build → Authentication → Jetzt starten → Anmeldemethode → Anonym** aktivieren.
+3. **Build → Firestore Database → Datenbank erstellen** (Standort z. B. `eur3`, *Produktionsmodus*).
+4. Firestore → **Regeln**: Inhalt von [`firestore.rules`](firestore.rules) einfügen → **Veröffentlichen**.
+5. **Projekteinstellungen (Zahnrad) → Allgemein → Deine Apps → Web-App `</>`** hinzufügen (Name z. B. „FC Trader“,
+   *kein* Firebase Hosting nötig). Den angezeigten `firebaseConfig`-Block kopieren.
+6. Den Block in [`web/config.js`](web/config.js) eintragen (auf GitHub: Datei öffnen → Stift-Symbol → einfügen →
+   *Commit changes*) – oder einfach an Claude schicken, der trägt ihn ein.
+   Die Werte sind nicht geheim; der Zugriff wird über die Regeln und den Depot-Code geschützt.
+
+### 2. Veröffentlichen (Netlify, kostenlos)
+1. <https://app.netlify.com> → mit GitHub anmelden.
+2. **Add new site → Import an existing project → GitHub** → Repository `EAFC27` wählen.
+3. Branch wählen (aktuell `claude/ea-fc-player-tracker-da0of6`, später `main`). Die restlichen Einstellungen kommen
+   aus [`netlify.toml`](netlify.toml) (Ordner `web`, kein Build) → **Deploy**.
+4. Unter *Site configuration → Change site name* eine Adresse wählen, z. B. `fc-trader-denis.netlify.app`.
+   Jede Änderung im Repository wird ab jetzt automatisch veröffentlicht.
+
+### 3. Auf die iPhones
+1. Die Netlify-Adresse in **Safari** öffnen.
+2. **Teilen → „Zum Home-Bildschirm“**. Ab jetzt startet FC Trader wie eine App (Vollbild, eigenes Symbol).
+3. Du: Namen eingeben → **Neues Depot erstellen** → unter *Einstellungen* **Code teilen**.
+4. Freund: Namen eingeben → Code bei **Depot beitreten** eintragen.
+5. Unter *Einstellungen → Aus Excel importieren* einmalig eure Excel-Datei (`.xlsx`) wählen.
+
+> Ohne Firebase-Konfiguration startet die App im **Demo-Modus** – zum Ausprobieren, Daten bleiben dann nur im Browser.
+
+---
+
+## Funktionen
 
 ### Erfassung – so wenige Taps wie möglich
-- **Kauf erfassen**: Name, Rating, Chemiestil (Dropdown), Einkaufspreis, Kaufdatum (vorausgefüllt mit „jetzt“).
-- **Screenshot / Bildschirmvideo scannen** (Symbol ⌗ oben rechts in Übersicht und Spielerliste):
-  Texterkennung auf dem iPhone (Apple Vision), abgestimmt auf die deutsche Spieloberfläche.
-  Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
-
-  | Ansicht im Spiel | Erkannt | Aktion in der App |
-  |---|---|---|
-  | Item-Details „…ergattert f. 1.000“ | Name, Rating, Kaufpreis | Kauf prüfen & speichern |
-  | Kandidatenliste → Ersteigerte Items | alle Karten mit Name, Rating, „Verkauft für“ (= Kaufpreis) | mehrere Käufe auf einmal |
-  | Transferliste → Verk. Items | alle verkauften Karten mit „Verkauft für“ (= Verkaufspreis) | Verkäufe werden dem ältesten offenen Kauf zugeordnet |
-  | Item-Details „Endpreis 2.100“ | Name, Rating, Verkaufspreis | Verkauf verbuchen |
-  | Bildschirmvideo | ca. 3 Bilder/Sek., Ergebnis per Mehrheitsentscheid | wie oben |
-
-  - Kontostand oben und Tab-Leiste unten werden ignoriert, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ ebenfalls.
-  - Der **Chemiestil** wird am **Symbol auf der Karte** erkannt (alle 23 Stile, Detailseite und Listen).
-    Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des Spielers vorbelegt und markiert.
-    Korrigierte Stile werden als zusätzliche Vorlage gespeichert (gemeinsam im Depot) – die Erkennung lernt mit.
-    Beim Verkauf kommt der Stil aus dem Kauf (EA zeigt ihn nach dem Verkauf nicht mehr).
-  - Doppelt gescannte Verkäufe (gleicher Spieler & Preis in den letzten 36 Std.) werden markiert und nicht automatisch verbucht.
-  - Namen werden tolerant abgeglichen: „Fiamma Benítez“ im Spiel passt zu „Benitez“ aus der Excel.
-- **Autovervollständigung**: Bereits gehandelte Spieler werden beim Tippen vorgeschlagen und füllen
-  Rating + Chemiestil automatisch.
-- **Zuletzt genutzte Chemiestile** als Schnellauswahl neben dem Dropdown.
-- **Preiseingabe**: `12500`, `12.500`, `12,5k` oder `1.2m` – plus `000`- und `k`-Taste über der Tastatur.
-- **Automatischer Fokus**: Nach 2 Ziffern Rating springt der Cursor direkt zum Preis.
+- **Kauf erfassen** (+): Name, Rating, Chemiestil (Dropdown + zuletzt genutzte als Schnellauswahl),
+  Einkaufspreis, Kaufdatum (heute vorausgefüllt), Notiz.
+- **Vorschläge beim Tippen**: bekannte Spieler füllen Rating und Chemiestil automatisch.
+- **Preiseingabe**: `12500`, `12.500`, `12,5k` oder `1.2m`, dazu Schnelltasten `+000` und `k`.
 - **„Sichern & nächste Karte“** für mehrere Käufe hintereinander.
-- **Verkaufen per Wischgeste** (nach rechts wischen): nur Preis eintippen, Gewinn wird live berechnet.
-  Chips „Break-even / +5 % / +10 % / +20 %“ setzen den passenden Preis (inkl. Preisstufen des Marktes).
-- **„Nochmal gekauft“**: gleiche Karte mit einem Tap erneut erfassen.
+- **Verkaufen** (Knopf „VK“): nur Preis eintippen, Gewinn wird live berechnet. Schnellauswahl
+  „Ziel“ (kalk. VK), „Break-even“, „+10 %“, „+20 %“ (inkl. Preisstufen des Transfermarkts).
+
+### Screenshot / Bildschirmvideo scannen (Symbol neben dem +)
+Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
+
+| Ansicht im Spiel | Erkannt | Aktion in der App |
+|---|---|---|
+| Item-Details „…ergattert f. 1.000“ | Name, Rating, Chemiestil, Kaufpreis | Kauf prüfen & speichern |
+| Kandidatenliste → Ersteigerte Items | alle Karten mit „Verkauft für“ (= bezahlter Preis) | mehrere Käufe auf einmal |
+| Transferliste → Verk. Items | alle verkauften Karten mit „Verkauft für“ | Verkäufe dem ältesten offenen Kauf zuordnen |
+| Item-Details „Endpreis 2.100“ | Name, Rating, Verkaufspreis | Verkauf verbuchen |
+| Bildschirmvideo | bis zu 6 Einzelbilder, Ergebnis per Mehrheitsentscheid | wie oben |
+
+- Kontostand, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ werden ignoriert.
+- **Chemiestil am Kartensymbol** (alle 23 Stile). Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des
+  Spielers vorbelegt und markiert. Korrekturen werden als Vorlage gespeichert (gemeinsam im Depot) – die Erkennung lernt mit.
+- Beim Verkauf kommen Chemiestil und EK aus dem Kauf (EA zeigt den Stil nach dem Verkauf nicht mehr).
+- Doppelte Scans (gleicher Spieler & Preis am selben Tag) werden markiert.
+- Namen werden tolerant abgeglichen: „Fiamma Benítez“ im Spiel passt zu „Benitez“ aus der Excel.
+- Dauer: ca. 3–8 Sekunden pro Screenshot. Beim ersten Scan wird die Texterkennung einmalig geladen (~9 MB).
 
 ### Gewinnberechnung
 ```
 Gewinn = Verkaufspreis − 5 % EA Tax − Einkaufspreis
 Marge  = Gewinn / Verkaufspreis
 ```
-Zusätzlich zeigt die App für jede offene Karte:
 - **Kalk. VK / Ziel**: EK + Aufschlag laut eurer bisherigen Excel-Tabelle (Spalte „kalk. VK“)
 
   | EK bis | 2.000 | 4.000 | 6.000 | 10.000 | 15.000 | 25.000 | 50.000 | 100.000 | 200.000 | darüber |
@@ -50,95 +91,65 @@ Zusätzlich zeigt die App für jede offene Karte:
 
 - **Break-even**: kleinster Marktpreis ohne Verlust nach Tax (auf gültige Preisstufe gerundet)
 
-### Übersicht (Dashboard)
-Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt) – alles, was die Excel-Seite „Dashboard“ hatte, plus mehr:
-- Gesamtgewinn, Anzahl Verkäufe
-- Unverkaufte Spieler, aktuell investiert, **kalkulierter VK-Wert** der offenen Spieler inkl. erwartetem Gewinn
-- Ø Gewinn pro Verkauf, Ø Marge, Trefferquote, Rendite
-- Gesamt EK / Gesamt VK, Ø Haltedauer, bezahlte EA Tax
-- **Gewinn pro Tag** (letzte 10 Tage, Balkendiagramm) oder **Gewinnverlauf** (Linie) – antippen für Details
-- **Gewinn pro Kalenderwoche**
-- **Top-Spieler** (summiert je Spieler) mit vollständigem **Spieler-Ranking** (sortierbar nach Gewinn, Anzahl, Ø Gewinn, Haltedauer)
-- Bester und schwächster Verkauf
-- „Am längsten im Club“ – Ladenhüter mit Ziel-VK und Direkt-Verkaufen-Button
-
-### Vermögen (ersetzt die „Wochenübersicht“)
-Einmal pro Woche einen Stand mit denselben Werten wie in der Excel eintragen (alles händisch):
-Teamwert (ESBC), TL-Wert (ESBC), Coins Bank, TL-Wert (eigen), VK ÜV-Karten, ÜV-Karten a. Liste, Gewinn ÜV.
-
-- Wertefelder sind mit dem letzten Stand vorausgefüllt, die ÜV-Felder starten leer.
-- Automatisch: **ges. Vermögen** (Teamwert + TL-Wert ESBC + Coins) und **Plus z. Vorw.** bei jedem Wert.
-- Verlaufsdiagramm des Gesamtvermögens.
+### Übersicht
+Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt):
+- Gesamtgewinn, unverkaufte Spieler, aktuell investiert, kalk. VK-Wert der offenen Spieler inkl. erwartetem Gewinn
+- Ø Gewinn pro Verkauf, Ø Marge, Trefferquote, Rendite, Gesamt EK / VK, Ø Haltedauer, bezahlte EA Tax
+- **Gewinn pro Tag** (letzte 10 Tage, antippbar) und **pro Kalenderwoche**
+- **Top-Spieler** und vollständiges **Spieler-Ranking**
+- Bester / schwächster Verkauf, „Am längsten im Club“ mit Ziel-VK und Verkaufen-Knopf
 
 ### Spielerliste
-Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),
-Summenleiste unten (EK und Ziel-VK bzw. Gewinn).
+Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer), Summenleiste.
+Antippen öffnet Bearbeiten (inkl. Verkauf rückgängig machen und Löschen).
+
+### Vermögen (ersetzt die „Wochenübersicht“)
+Einmal pro Woche eintragen (alles händisch, wie in der Excel): Teamwert (ESBC), TL-Wert (ESBC), Coins Bank,
+TL-Wert (eigen), VK ÜV-Karten, ÜV-Karten a. Liste, Gewinn ÜV. Die App rechnet das **ges. Vermögen**
+(Teamwert + TL-Wert ESBC + Coins) und bei jedem Wert **Plus z. Vorw.** aus.
 
 ### Excel-Import & -Export
-- **Import** (Einstellungen → „Aus Excel importieren“): Reiter „Spieler“ als CSV.
-  - Google Tabellen: *Datei → Herunterladen → CSV (aktuelles Tabellenblatt)*
-  - Excel: *Datei → Speichern unter → CSV UTF-8*
-  - Spalten werden über die Überschrift erkannt (Name, Rating, ChemieStyle, EK, EK Datum, VK, VK Datum).
-  - Ein erneuter Import überschreibt die bereits importierten Einträge, statt sie zu verdoppeln.
+- **Import**: eure `.xlsx` direkt (Reiter „Spieler“) oder eine `.csv`. Spalten werden über die Überschrift erkannt
+  (Name, Rating, ChemieStyle, EK, EK Datum, VK, VK Datum). Ein erneuter Import überschreibt statt zu verdoppeln.
 - **Export** als CSV im gleichen Aufbau (inkl. kalk. VK, Tax, Gewinn, Marge).
+
+---
 
 ## Technik
 
-| Baustein | Lösung |
-|---|---|
-| App | SwiftUI, iOS 17+ |
-| Gemeinsame Daten | Firebase Firestore (kostenloser Spark-Plan reicht), Echtzeit-Sync + Offline-Cache |
-| Anmeldung | Firebase anonyme Anmeldung, Zugriff über gemeinsamen **Depot-Code** |
-| Texterkennung | Apple Vision (on-device, kostenlos, keine Daten verlassen das Gerät) |
+| Baustein | Web-App | iOS-App |
+|---|---|---|
+| Oberfläche | HTML/CSS/JavaScript ohne Build-Schritt, installierbar (PWA, offline) | SwiftUI, iOS 17+ |
+| Daten | Firebase Firestore + anonyme Anmeldung, Zugriff über **Depot-Code** | gleich |
+| Texterkennung | Tesseract.js (deutsch), zwei Durchgänge (normal + invertiert) | Apple Vision |
+| Chemiestil | Symbolabgleich `web/js/chemicons.js` | `ChemistryIconMatcher.swift` |
 
-Datenstruktur: `depots/{Depot-Code}/players/{ID}` und `depots/{Depot-Code}/snapshots/{ID}`
+Datenstruktur: `depots/{Code}/players/{ID}`, `depots/{Code}/snapshots/{ID}`, `depots/{Code}/chemIcons/{ID}`
 
-## Einrichtung
+Mitgelieferte Bibliotheken in `web/vendor/` (keine externen Server nötig): Tesseract.js 5.1 + deutsche Sprachdaten,
+Firebase 10.14 (gebündelt), SheetJS 0.18 (Excel).
 
-Voraussetzung: Mac mit **Xcode 15 oder neuer**.
-
-### 1. Projekt erzeugen
-Das Xcode-Projekt wird mit [XcodeGen](https://github.com/yonaskolb/XcodeGen) aus `project.yml` erzeugt:
+### Web-App lokal starten
 ```bash
-brew install xcodegen
-xcodegen
-open FCTrader.xcodeproj
+cd web && python3 -m http.server 8000   # dann http://localhost:8000 öffnen
 ```
-Xcode lädt das Firebase-Paket beim ersten Öffnen automatisch herunter.
 
-**Ohne weitere Einrichtung startet die App im Demo-Modus mit Beispieldaten** – ideal zum ersten Durchklicken
-im Simulator.
-
-### 2. Firebase einrichten (für den gemeinsamen Betrieb)
-1. Auf <https://console.firebase.google.com> ein Projekt anlegen (Google Analytics nicht nötig).
-2. **iOS-App hinzufügen** mit Bundle-ID `com.fctrader.app` (oder die in `project.yml` geänderte).
-3. `GoogleService-Info.plist` herunterladen und in den Ordner `FCTrader/` legen, danach erneut `xcodegen` ausführen.
-4. **Build → Authentication → Anmeldemethode → Anonym** aktivieren.
-5. **Build → Firestore Database → Datenbank erstellen** (Region z. B. `eur3`, Produktionsmodus).
-6. Unter **Regeln** den Inhalt von [`firestore.rules`](firestore.rules) einfügen und veröffentlichen.
-
-### 3. Auf die iPhones bringen
-- In Xcode unter *Signing & Capabilities* dein Team auswählen (kostenlose Apple-ID reicht).
-- iPhone per Kabel anschließen und starten. Das funktioniert auch für das iPhone deines Freundes.
-  - Mit kostenloser Apple-ID läuft die App 7 Tage und muss dann neu installiert werden.
-  - Mit dem Apple Developer Program (99 €/Jahr) geht die Verteilung bequem über **TestFlight**.
-
-### 4. Loslegen
-1. Du: Namen eingeben → **Neues Depot erstellen** → in den Einstellungen **Code mit Freund teilen**.
-2. Freund: Namen eingeben → Code bei **Depot beitreten** eintragen.
-3. Ab jetzt seht ihr beide dieselben Karten live.
+### iOS-App (optional, benötigt Mac mit Xcode 15+)
+```bash
+brew install xcodegen && xcodegen && open FCTrader.xcodeproj
+```
+Firebase: iOS-App in der Firebase-Konsole anlegen (Bundle-ID `com.fctrader.app`), `GoogleService-Info.plist`
+nach `FCTrader/` legen, erneut `xcodegen`. Ohne die Datei startet die App im Demo-Modus.
 
 ## Anpassen
 
-- **Chemiestile**: `FCTrader/Models/ChemistryStyles.swift`.
-- **Steuersatz**: `EATax.rate` in `FCTrader/Models/PlayerCard.swift`.
-- **Aufschläge für den kalk. VK**: `TargetPrice.tiers` in `FCTrader/Models/PlayerCard.swift`.
-- **Chemiestil-Symbole**: Vorlagen in `FCTrader/Models/ChemistryIconTemplates.swift`, neu erzeugen mit
-  `python3 Tools/chem_icons/build_templates.py <Ordner mit Item-Details-Screenshots, benannt nach Stil>`.
-  `Tools/chem_icons/iconlib.py` ist die Referenz-Implementierung von `ChemistryIconMatcher.swift`.
+- **Chemiestile**: `web/js/calc.js` (`STYLES`) bzw. `FCTrader/Models/ChemistryStyles.swift`.
+- **Steuersatz / Aufschläge**: `TAX_RATE` und `TIERS` in `web/js/calc.js` bzw. `FCTrader/Models/PlayerCard.swift`.
+- **Chemiestil-Symbole**: Vorlagen neu erzeugen mit
+  `python3 Tools/chem_icons/build_templates.py <Ordner mit Item-Details-Screenshots, benannt nach Stil>`
+  (schreibt die Swift-Datei; für die Web-App anschließend `web/js/chem-templates.js` daraus übernehmen).
 
 ## Ideen für die nächsten Schritte
-- Share-Extension: Screenshot direkt aus der Fotos-App an FC Trader senden
-- Zielpreis pro Karte + Push-Benachrichtigung / Erinnerung für Ladenhüter
+- Zielpreis pro Karte + Erinnerung für Ladenhüter
 - Kartenversion (TOTW, Promo …) und Position als zusätzliche Felder
-- Widget für den Homescreen (Tagesgewinn, offene Karten)
+- Tages-/Wochenziel mit Fortschrittsanzeige
