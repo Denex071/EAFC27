@@ -8,7 +8,7 @@
 import { toISODate, parseDay } from "./calc.js";
 
 const listeners = new Set();
-export const data = { cards: [], snaps: [], icons: [], settings: {}, ready: false, mode: "demo", error: null };
+export const data = { cards: [], snaps: [], icons: [], settings: {}, ready: false, mode: "demo", error: null, pending: 0, pendingSince: 0, offline: false };
 const emit = () => listeners.forEach(fn => fn(data));
 export const subscribe = fn => { listeners.add(fn); fn(data); return () => listeners.delete(fn); };
 
@@ -77,7 +77,13 @@ async function firestoreBackend(config, depot) {
 
   const onErr = e => { data.error = e.message; emit(); };
   const unsubs = [
-    fb.onSnapshot(col("players"), s => { data.cards = s.docs.map(x => cardFrom(x.id, x.data())).filter(Boolean); data.ready = true; emit(); }, onErr),
+    // Mit Metadaten: zeigt, ob Änderungen noch nicht bei der Cloud angekommen sind (offline / Verbindung gestört)
+    fb.onSnapshot(col("players"), { includeMetadataChanges: true }, s => {
+      data.cards = s.docs.map(x => cardFrom(x.id, x.data())).filter(Boolean); data.ready = true;
+      const pending = s.docs.filter(x => x.metadata.hasPendingWrites).length;
+      if (pending && !data.pending) data.pendingSince = Date.now();
+      data.pending = pending; data.offline = s.metadata.fromCache; emit();
+    }, onErr),
     fb.onSnapshot(col("snapshots"), s => { data.snaps = s.docs.map(x => snapFrom(x.id, x.data())).filter(Boolean); emit(); }, onErr),
     fb.onSnapshot(fb.doc(col("settings"), "main"), s => { data.settings = s.exists() ? s.data() : {}; emit(); }, onErr),
     fb.onSnapshot(col("chemIcons"), s => { data.icons = s.docs.map(x => ({ id: x.id, ...x.data() })).filter(x => x.style && x.hex); emit(); }, onErr),

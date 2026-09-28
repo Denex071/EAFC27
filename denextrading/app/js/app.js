@@ -254,6 +254,13 @@ function render() {
   const top = [];
   if (S.data.error) top.push(`<div class="err">${esc(S.data.error)}</div>`);
   if (S.data.mode === "demo") top.push(`<div class="banner">Demo-Modus – Daten bleiben nur in diesem Browser.</div>`);
+  if (S.data.pending) {
+    // Änderungen liegen nur auf diesem Gerät – nach kurzer Zeit deutlich warnen
+    const long = Date.now() - S.data.pendingSince > 8000;
+    top.push(`<div class="${long ? "err" : "banner"}">${long ? "⚠ " : ""}${S.data.pending} Änderung${S.data.pending > 1 ? "en" : ""} noch nicht in der Cloud gespeichert${long
+      ? " – bitte Internetverbindung prüfen und die App geöffnet lassen, bis diese Meldung verschwindet." : " …"}</div>`);
+    clearTimeout(render.pendingTimer); render.pendingTimer = setTimeout(render, 9000);
+  } else if (S.data.offline && S.data.mode === "cloud") top.push(`<div class="banner">Offline – Änderungen werden gespeichert, sobald wieder eine Verbindung besteht.</div>`);
   if (!S.data.ready) { view.innerHTML = top.join("") + `<div class="empty">Daten werden geladen …</div>`; return; }
   view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, wealth: wealthHtml, more: moreHtml })[ui.tab || "dash"]();
   if (ui.tab === "list") bindListInputs();
