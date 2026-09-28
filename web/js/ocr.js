@@ -85,19 +85,38 @@ async function imageFrames(file) {
   return [canvasFrom(bmp, bmp.width, bmp.height)];
 }
 
-/// Bis zu 6 gleichmäßig verteilte Einzelbilder aus einem Bildschirmvideo.
+/// Kleiner Graustufen-Fingerabdruck eines Bildes, um fast gleiche Einzelbilder zu überspringen.
+function signature(source, w, h) {
+  const c = document.createElement("canvas"); c.width = 48; c.height = 104;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, w, h, 0, 0, 48, 104);
+  const d = ctx.getImageData(0, 0, 48, 104).data, s = new Float32Array(48 * 104);
+  for (let i = 0; i < s.length; i++) s[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 765;
+  return s;
+}
+// Größte Abweichung: ein anderer Spieler ändert nur den Kartenbereich, das aber deutlich (> 0,3);
+// dasselbe Bild schwankt durch Kompression nur um < 0,05.
+const difference = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) m = Math.max(m, Math.abs(a[i] - b[i])); return m; };
+
+/// Einzelbilder aus einem Bildschirmvideo: alle 0,5 s eins, fast gleiche werden übersprungen (max. 12).
 async function videoFrames(file) {
   const url = URL.createObjectURL(file);
   const v = document.createElement("video");
   v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
   await new Promise((ok, fail) => { v.onloadeddata = ok; v.onerror = () => fail(new Error("Video kann nicht gelesen werden")); });
   try { await v.play(); v.pause(); } catch (e) { /* iOS: Wiedergabe nicht nötig */ }
-  const n = Math.max(1, Math.min(6, Math.round(v.duration * 1.2)));
+  const times = [];
+  for (let t = 0.1; t < v.duration; t += 0.5) times.push(t);
+  if (!times.length) times.push(0);
   const frames = [];
-  for (let i = 0; i < n; i++) {
-    const t = n === 1 ? 0 : Math.min(v.duration - 0.05, (v.duration * i) / (n - 1));
-    await new Promise(ok => { v.onseeked = ok; v.currentTime = Math.max(0, t); });
+  let last = null;
+  for (const t of times) {
+    await new Promise(ok => { v.onseeked = ok; v.currentTime = Math.min(t, Math.max(0, v.duration - 0.05)); });
+    const sig = signature(v, v.videoWidth, v.videoHeight);
+    if (last && difference(sig, last) < 0.12) continue; // gleiche Ansicht wie zuvor
+    last = sig;
     frames.push(canvasFrom(v, v.videoWidth, v.videoHeight));
+    if (frames.length >= 12) break;
   }
   URL.revokeObjectURL(url);
   return frames;

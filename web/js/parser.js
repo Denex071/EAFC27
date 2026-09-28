@@ -12,11 +12,13 @@ const CONTENT_TOP = 0.14;
 const CONTENT_BOTTOM = 0.9;
 
 const PAID_LABELS = ["verkauft fur", "gekauft fur", "sold for", "bought for"];
-const WON_PHRASES = ["ergattert", "erworben"];
+// Kauf-Detailseiten: „Glückwunsch, du hast dieses Item ergattert f.“ (Bieten) bzw. „Item gekauft für“ (Nicht zugewiesen)
+const WON_PHRASES = ["ergattert", "erworben", "item gekauft fur", "itemgekauft"];
 const SOLD_PHRASES = ["endpreis"];
 // Erkennungsmerkmale der Ansicht. Kauf-Seiten zeigen u. a. „Transferliste voll“ oder „Zu Mein Verein“ –
 // deshalb zählt „Transferliste“ nur als Verkauf, wenn es allein als Seitentitel steht.
-const PURCHASE_MARKERS = ["kandidatenliste", "ersteigerte items", "ergattert", "gluckwunsch", "zu mein verein",
+const PURCHASE_MARKERS = ["kandidatenliste", "ersteigerte items", "ergattert", "gluckwunsch", "nicht zugewiesen",
+  "item gekauft", "zu mein verein",
   "zur aktiven mannschaft", "alles an verein senden", "transferliste voll", "transfer targets", "items won"];
 const SALE_MARKERS = ["verk. items", "verkaufte loschen", "nicht verk. items", "endpreis", "alle neu anbieten",
   "sold items"];

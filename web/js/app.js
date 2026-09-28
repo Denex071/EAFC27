@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
