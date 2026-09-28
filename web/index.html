@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>FC Trader</title>
 <meta name="theme-color" content="#0c1320">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,6 +22,9 @@
 <script src="config.js"></script>
 <script type="module" src="js/app.js"></script>
 <script>
+  // Zoomen verhindern (iOS ignoriert user-scalable=no teilweise): Zwei-Finger-Geste abfangen; Doppeltippen verhindert touch-action im CSS
+  ["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  document.addEventListener("touchmove", e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
   if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
 </body>
