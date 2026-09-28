@@ -28,21 +28,25 @@ struct WealthView: View {
                 } header: {
                     Text("Laut App (live)")
                 } footer: {
-                    Text("Werte aus den erfassten Karten. Beim neuen Stand kannst du sie übernehmen.")
+                    Text("Wird aus den erfassten Spielern berechnet und beim Wochenstand automatisch festgehalten.")
                 }
 
                 Section("Wochenstände") {
                     if snapshots.isEmpty {
-                        Text("Noch kein Stand erfasst. Tippe auf +, um Teamwert, Transferlisten-Wert und Coins einzutragen.")
+                        Text("Noch kein Stand erfasst. Tippe einmal pro Woche auf +, um Teamwert, Transferlisten-Wert (ESBC) und Coins einzutragen. Verkäufe, offene Spieler, Gewinn und TL-Wert laut App rechnet die App selbst aus.")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
                         let previous = index + 1 < snapshots.count ? snapshots[index + 1] : nil
+                        let beforePrevious = index + 2 < snapshots.count ? snapshots[index + 2] : nil
                         Button { editing = snapshot } label: {
                             SnapshotRow(
                                 snapshot: snapshot,
+                                figures: WeekFigures(cards: store.players, after: previous?.date, upTo: snapshot.date),
                                 previous: previous,
-                                tradingProfit: TradingStats.profit(of: store.players, after: previous?.date, upTo: snapshot.date)
+                                previousFigures: previous.map {
+                                    WeekFigures(cards: store.players, after: beforePrevious?.date, upTo: $0.date)
+                                }
                             )
                         }
                         .tint(.primary)
@@ -135,38 +139,62 @@ struct WealthView: View {
     @ViewBuilder
     private var appValues: some View {
         let stats = TradingStats(players: store.players, period: .all)
-        LabeledContent("Offene Karten", value: "\(stats.open.count)")
-        LabeledContent("Kalk. VK-Wert offen", value: Coins.format(stats.openTargetValue))
+        let sinceLast = WeekFigures(cards: store.players, after: snapshots.first?.date, upTo: .now)
+        LabeledContent("Spieler auf Liste", value: "\(stats.open.count)")
+        LabeledContent("TL-Wert (App, kalk. VK)", value: Coins.format(stats.openTargetValue))
         LabeledContent("Investiert (EK offen)", value: Coins.format(stats.capitalBound))
+        LabeledContent(snapshots.isEmpty ? "Verkauft bisher" : "Verkauft seit letztem Stand", value: "\(sinceLast.soldCount)")
+        LabeledContent(snapshots.isEmpty ? "Gewinn bisher" : "Gewinn seit letztem Stand") {
+            ProfitText(value: sinceLast.tradingProfit)
+        }
     }
 }
 
 struct SnapshotRow: View {
     let snapshot: WealthSnapshot
+    let figures: WeekFigures
     let previous: WealthSnapshot?
-    let tradingProfit: Int
+    let previousFigures: WeekFigures?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(snapshot.date.formatted(date: .abbreviated, time: .omitted)).font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(period).font(.headline)
                 Spacer()
-                Text(Coins.format(snapshot.total)).font(.headline.monospacedDigit())
-            }
-            HStack(spacing: 12) {
-                part("Team", snapshot.teamValue, previous?.teamValue)
-                part("TL", snapshot.transferListValue, previous?.transferListValue)
-                part("Coins", snapshot.coins, previous?.coins)
-            }
-            HStack {
-                if let previous {
-                    Text("Veränderung").font(.caption).foregroundStyle(.secondary)
-                    ProfitText(value: snapshot.total - previous.total, font: .caption.bold(), compact: true)
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(Coins.format(snapshot.total)).font(.headline.monospacedDigit())
+                    if let previous {
+                        ProfitText(value: snapshot.total - previous.total, font: .caption.bold())
+                    }
                 }
-                Spacer()
-                Text("Trading-Gewinn").font(.caption).foregroundStyle(.secondary)
-                ProfitText(value: tradingProfit, font: .caption.bold(), compact: true)
             }
+
+            // Händische Eingaben
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    cell("Teamwert", snapshot.teamValue, previous?.teamValue)
+                    cell("TL (ESBC)", snapshot.transferListValue, previous?.transferListValue)
+                    cell("Coins", snapshot.coins, previous?.coins)
+                }
+                // Von der App berechnet
+                GridRow {
+                    cell("TL (App)", figures.openTargetValue, previousFigures?.openTargetValue)
+                    cell("Verkauft", figures.soldCount, previousFigures?.soldCount, plain: true)
+                    cell("Auf Liste", figures.openCount, previousFigures?.openCount, plain: true)
+                }
+            }
+
+            HStack {
+                Text("Trading-Gewinn der Woche").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                ProfitText(value: figures.tradingProfit, font: .caption.bold())
+                if let previousFigures {
+                    Text("(\(Coins.signed(figures.tradingProfit - previousFigures.tradingProfit)) z. Vorw.)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if !snapshot.notes.isEmpty {
                 Text(snapshot.notes).font(.caption).foregroundStyle(.secondary)
             }
@@ -174,14 +202,23 @@ struct SnapshotRow: View {
         .padding(.vertical, 2)
     }
 
-    private func part(_ title: String, _ value: Int, _ previous: Int?) -> some View {
+    private var period: String {
+        let end = snapshot.date.formatted(.dateTime.day().month(.twoDigits).year(.twoDigits))
+        guard let previous else { return "bis \(end)" }
+        let start = Calendar.current.date(byAdding: .day, value: 1, to: previous.date) ?? previous.date
+        return "\(start.formatted(.dateTime.day().month(.twoDigits))) – \(end)"
+    }
+
+    /// Wert mit Veränderung zur Vorwoche ("Plus z. Vorw.").
+    private func cell(_ title: String, _ value: Int, _ previous: Int?, plain: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
-            Text(Coins.compact(value)).font(.caption.monospacedDigit())
+            Text(plain ? "\(value)" : Coins.compact(value)).font(.caption.monospacedDigit())
             if let previous {
-                Text(Coins.signed(value - previous))
+                let delta = value - previous
+                Text(plain ? (delta > 0 ? "+\(delta)" : "\(delta)") : Coins.signed(delta))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(value >= previous ? Color.green : Color.red)
+                    .foregroundStyle(delta >= 0 ? Color.green : Color.red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,37 +250,52 @@ struct SnapshotFormView: View {
         (Coins.parse(teamText) ?? 0) + (Coins.parse(transferText) ?? 0) + (Coins.parse(coinsText) ?? 0)
     }
 
+    /// Letzter Stand vor dem gewählten Datum (für die Wochenwerte).
+    private var previous: WealthSnapshot? {
+        store.snapshots.filter { $0.id != existing?.id && $0.date < date }.max { $0.date < $1.date }
+    }
+
     var body: some View {
-        let stats = TradingStats(players: store.players, period: .all)
+        let figures = WeekFigures(cards: store.players, after: previous?.date, upTo: date)
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("Datum", selection: $date)
+                    DatePicker("Stichtag", selection: $date)
                 }
                 Section {
-                    CoinField(title: "Teamwert", text: $teamText)
-                    CoinField(title: "Transferliste", text: $transferText)
-                    Button("Kalk. VK-Wert aus App übernehmen (\(Coins.compact(stats.openTargetValue)))") {
-                        transferText = "\(stats.openTargetValue)"
-                    }
-                    .font(.footnote)
-                    CoinField(title: "Coins", text: $coinsText)
+                    CoinField(title: "Teamwert (ESBC)", text: $teamText)
+                    CoinField(title: "TL-Wert (ESBC)", text: $transferText)
+                    CoinField(title: "Coins (Bank)", text: $coinsText)
                 } header: {
-                    Text("Werte")
+                    Text("Deine Eingaben")
                 } footer: {
-                    Text("Teamwert und Transferliste z. B. laut ESBC. Vorausgefüllt mit dem letzten Stand.")
+                    Text("Vorausgefüllt mit dem letzten Stand – nur ändern, was sich geändert hat.")
                 }
                 Section {
                     LabeledContent("Gesamtvermögen") {
                         Text(Coins.format(total)).font(.headline.monospacedDigit())
                     }
+                } footer: {
+                    Text("Teamwert + TL-Wert (ESBC) + Coins")
+                }
+                Section {
+                    LabeledContent("TL-Wert (App, kalk. VK)", value: Coins.format(figures.openTargetValue))
+                    LabeledContent("Spieler auf Liste", value: "\(figures.openCount)")
+                    LabeledContent("Verkauft seit letztem Stand", value: "\(figures.soldCount)")
+                    LabeledContent("Trading-Gewinn seit letztem Stand") {
+                        ProfitText(value: figures.tradingProfit)
+                    }
+                } header: {
+                    Text("Automatisch berechnet")
+                } footer: {
+                    Text(previous.map { "Zeitraum: seit \($0.date.formatted(date: .abbreviated, time: .shortened))" } ?? "Erster Stand: alle Verkäufe bis zum Stichtag.")
                 }
                 Section("Notiz") {
                     TextField("optional", text: $notes, axis: .vertical)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(existing == nil ? "Neuer Stand" : "Stand bearbeiten")
+            .navigationTitle(existing == nil ? "Wochenstand" : "Stand bearbeiten")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
