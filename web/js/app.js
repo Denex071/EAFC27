@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -127,12 +127,26 @@ function restockGroups() {
   }).sort((a, b) => b.soldOn.localeCompare(a.soldOn) || a.name.localeCompare(b.name));
 }
 /// Von Hand geplante Käufe als Gruppen (oben auf der Einkaufsliste)
-const wishGroups = () => [...S.data.wishes].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).map(w => ({
-  key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, lastEk: w.price, lastVk: null, soldOn: null, items: Array(w.qty || 1).fill(w) }));
-const allBuyGroups = () => [...wishGroups(), ...restockGroups()];
+const sortedWishes = () => [...S.data.wishes].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+/// Freie Plätze: verkaufte Ladenhüter, die nicht nachgekauft werden – dort rücken die geplanten Spieler (Ersatz) nach.
+const replaceSlots = () => S.data.cards.filter(c => isSold(c) && slowSeller(c) && !onRestock(c) && !["done", "skip", "replaced"].includes(c.restock))
+  .sort((a, b) => a.vkDate.localeCompare(b.vkDate));
+/// Geplante Spieler (je Stück) den freien Plätzen zuordnen: älteste Planung ersetzt den ältesten Ladenhüter
+function wishSlots() {
+  const slots = replaceSlots(), map = new Map(); let i = 0;
+  for (const w of sortedWishes()) { const mine = []; for (let k = 0; k < (w.qty || 1); k++) if (slots[i]) mine.push(slots[i++]); map.set(w.id, mine); }
+  return map;
+}
+const wishGroups = () => { const slots = wishSlots(); return sortedWishes().map(w => ({
+  key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, lastEk: w.price, lastVk: null, soldOn: null,
+  items: Array(w.qty || 1).fill(w), replaces: slots.get(w.id) || [] })); };
+const allBuyGroups = () => [...restockGroups(), ...wishGroups()]; // Nachkauf verkaufter Karten hat Vorrang
 const openBuyCount = () => restockOpen().length + sum(S.data.wishes.map(w => w.qty || 1));
-/// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen
-function useWish(w, n = 1) { (w.qty || 1) > n ? S.saveWish({ ...w, qty: w.qty - n }) : S.deleteWish(w.id); }
+/// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen; ersetzte Ladenhüter sind damit erledigt
+function useWish(w, n = 1) {
+  (wishSlots().get(w.id) || []).slice(0, n).forEach(c => S.saveCard({ ...c, restock: "replaced" }));
+  (w.qty || 1) > n ? S.saveWish({ ...w, qty: w.qty - n }) : S.deleteWish(w.id);
+}
 
 /// Neuer Kauf erfasst → passenden offenen Listeneintrag (gleicher Spieler & Rating, bevorzugt gleicher Stil) abhaken.
 function consumeRestock(card) {
@@ -515,7 +529,7 @@ function listHtml() {
       return `<div class="item" tabindex="0" data-edit="${c.id}">${badge(c.rating)}
         <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${!isSold(c) && c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}${staleTag(c)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
         <div class="right">${p != null ? `${profitHtml(p)}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div>`
-          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">kalk. VK ${compact(target(c.ek))} · ${heldSince(c.ekDate)}</div>`}</div>
+          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">${c.targetVk ? `Angebot ~${compact(c.targetVk)}` : `kalk. VK ${compact(target(c.ek))}`} · ${heldSince(c.ekDate)}</div>`}</div>
         ${p == null ? `<button class="mini gold" data-sell="${c.id}">VK</button>` : ""}</div>`;
     }).join("") || '<div class="empty">Keine Spieler gefunden.</div>'}</div>
     ${list.length > shown.length ? `<div class="hint">Die ersten ${shown.length} von ${list.length}. Suche oder Filter grenzt weiter ein.</div>` : ""}
@@ -531,53 +545,63 @@ function bindListInputs() {
 }
 
 function buyHtml() {
-  const groups = allBuyGroups();
-  const addBtn = '<button class="secondary" data-act="wish">+ Spieler zur Einkaufsliste</button>';
-  if (!groups.length) return `<section class="card"><h2>Alles nachgekauft</h2>
+  const groups = allBuyGroups(), restock = groups.filter(g => !g.wish), planned = groups.filter(g => g.wish);
+  const addBtn = '<button class="secondary" data-act="wish">+ Ersatzspieler planen</button>';
+  if (!groups.length && !replaceSlots().length) return `<section class="card"><h2>Alles nachgekauft</h2>
     <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.
       Spieler, die ihr noch kaufen wollt, könnt ihr auch selbst hinzufügen.</p></section>${addBtn}`;
   const { minProfit } = cfg();
   groups.forEach(g => { g.st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, minProfit); });
-  const count = sum(groups.map(g => g.items.length));
+  const count = sum(restock.map(g => g.items.length)), pcount = sum(planned.map(g => g.items.length));
   const budget = sum(groups.map(g => g.lastEk * g.items.length));
-  return `<section class="tiles">
-      <div class="tile"><div class="t">Nachzukaufen</div><div class="v num">${count}</div><div class="d">${groups.length} verschiedene Karten</div></div>
-      <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">Coins für alle Käufe</div></div></section>
-    ${addBtn}
-    <div class="list">${groups.map(g => `<div class="item" style="cursor:default">
+  const freeSlots = replaceSlots().length, usedSlots = sum(planned.map(g => g.replaces.length));
+  const row = g => `<div class="item" style="cursor:default">
       ${badge(g.rating)}
       <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}</div>
-        <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)} · von ${esc(g.wish.owner || "euch")} geplant` : `${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
+        <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
+        ${g.wish?.offer ? `<div class="stat-line">Angebot ~<b>${fmt(g.wish.offer)}</b> · Gewinn ${signed(profitOf(g.lastEk, g.wish.offer))}</div>` : ""}
+        ${g.wish ? `<div class="stat-line">${g.replaces.length ? `ersetzt <b>${g.replaces.map(c => esc(c.name)).join(", ")}</b> (kein Nachkauf)` : "bereit als Ersatz"} · geplant von ${esc(g.wish.owner || "euch")}</div>` : ""}
         ${g.st ? `<div class="stat-line">${g.st.n}× gedreht · Ø <b>${signed(g.st.avg)}</b> · ${holdText(g.st.hold)}${g.st.maxEk ? ` · max. EK <b>${fmt(g.st.maxEk)}</b>` : ""}${g.st.maxEk && g.lastEk > g.st.maxEk ? '<span class="tag alert">teuer</span>' : ""}</div>` : ""}</div>
       <div class="right" style="display:flex;gap:6px">
         <button class="mini" data-skip="${esc(g.key)}" aria-label="Überspringen" title="Überspringen">✕</button>
-        <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`).join("")}</div>
-    <p class="hint">„Gekauft“ speichert die Karte als neuen Kauf – nur den EK anpassen. Geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
+        <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`;
+  return `<section class="tiles">
+      <div class="tile"><div class="t">Nachkauf</div><div class="v num">${count}</div><div class="d">${restock.length} verschiedene Karten</div></div>
+      <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">inkl. ${pcount} Ersatzspieler</div></div></section>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Nachkauf</h2><span class="hint">verkaufte Karten · Vorrang</span></div>
+      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${restock.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Ersatzspieler</h2><span class="hint">${freeSlots ? `${freeSlots} Ladenhüter zu ersetzen` : "von Hand geplant"}</span></div>
+      ${freeSlots > usedSlots ? `<div class="warn" style="padding:0 14px 10px">${freeSlots - usedSlots} Ladenhüter ohne Ersatz – plane weitere Spieler.</div>` : ""}
+      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${planned.map(row).join("") || '<div class="empty">Noch keine Ersatzspieler geplant.</div>'}</div></section>
+    ${addBtn}
+    <p class="hint">Verkaufte Karten werden zuerst nachgekauft. Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch deine geplanten Ersatzspieler ersetzt – der älteste Plan zuerst.
+      „Gekauft“ speichert den Kauf, geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
       max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
 }
 
 /// Spieler von Hand auf die Einkaufsliste setzen bzw. bearbeiten
 function openWish(existing) {
-  const w = existing || { name: "", rating: "", chem: "Basic", price: "", qty: 1 };
+  const w = existing || { name: "", rating: "", chem: "Basic", price: "", offer: "", qty: 1 };
   const body = `<form class="form" id="wf" autocomplete="off">
     <div class="group">
       <div class="field"><label for="w-name">Name</label><input id="w-name" value="${esc(w.name)}" list="known-names" placeholder="z. B. Musiala"></div>
       <div class="field"><label for="w-rating">Rating</label><input id="w-rating" inputmode="numeric" value="${w.rating}" placeholder="z. B. 84"></div>
       <div class="field"><label for="w-chem">Chemistry Style</label><select id="w-chem">${chemOptions(w.chem)}</select></div>
       <div class="field"><label for="w-price">Preis (EK)</label><input id="w-price" inputmode="decimal" value="${w.price}" placeholder="0"></div>
+      <div class="field"><label for="w-offer">Vorauss. Angebotspreis</label><input id="w-offer" inputmode="decimal" value="${w.offer || ""}" placeholder="optional"></div>
       <div class="field"><label for="w-qty">Anzahl</label><select id="w-qty">${[1, 2, 3, 4, 5, 6, 8, 10].map(n => `<option ${n === (w.qty || 1) ? "selected" : ""}>${n}</option>`).join("")}</select></div>
       <div id="w-calc"></div></div>
     <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
     ${existing ? '<button type="button" class="mini" id="w-del" style="align-self:flex-start;color:var(--bad)">Von der Liste löschen</button>' : ""}
     <p class="hint">Der Spieler erscheint auf der Einkaufsliste. Kauft ihr ihn später (über „Gekauft“, + oder Screenshot), wird er automatisch abgehakt.</p></form>`;
   const valid = () => $("w-name").value.trim() && +$("w-rating").value >= 1 && +$("w-rating").value <= 99 && parseCoins($("w-price").value) > 0;
-  const refresh = sheet(existing ? "Geplanten Kauf bearbeiten" : "Zur Einkaufsliste", body, "Sichern", () => {
+  const refresh = sheet(existing ? "Ersatzspieler bearbeiten" : "Ersatzspieler planen", body, "Sichern", () => {
     const name = $("w-name").value.trim();
     S.saveWish({ id: existing ? existing.id : S.newId(), name, rating: +$("w-rating").value, chem: $("w-chem").value,
-      price: parseCoins($("w-price").value), qty: +$("w-qty").value, owner: existing?.owner || settings.name, createdAt: existing?.createdAt || Date.now() });
+      price: parseCoins($("w-price").value), offer: parseCoins($("w-offer").value) || null, qty: +$("w-qty").value, owner: existing?.owner || settings.name, createdAt: existing?.createdAt || Date.now() });
     closeSheet(); toast(existing ? "Gespeichert" : `${name} steht auf der Einkaufsliste`);
   }, valid);
-  const upd = () => { $("w-calc").innerHTML = calcHtml(parseCoins($("w-price").value), null); refresh(); };
+  const upd = () => { $("w-calc").innerHTML = calcHtml(parseCoins($("w-price").value), parseCoins($("w-offer").value) || null); refresh(); };
   $("w-name").addEventListener("change", () => { const l = lastCard($("w-name").value); if (l) { if (!$("w-rating").value) $("w-rating").value = l.rating; $("w-chem").value = l.chem; } upd(); });
   $("wf").addEventListener("input", upd); $("wf").addEventListener("submit", e => e.preventDefault());
   if ($("w-del")) $("w-del").onclick = e => confirmButton(e.target, "Wirklich löschen?", () => { S.deleteWish(existing.id); closeSheet(); toast("Gelöscht"); });
@@ -590,7 +614,7 @@ function openBuy(key) {
   const st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, cfg().minProfit);
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(g.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(g.name)}</div>
-      <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
+      <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}${g.wish.offer ? ` · Angebot ~${fmt(g.wish.offer)}` : ""}${g.replaces?.length ? ` · ersetzt ${g.replaces.map(c => esc(c.name)).join(", ")}` : ""}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
     ${st ? `<div class="group"><div class="gh">Bisher ${st.n}× gedreht${st.sameStyle ? "" : " (alle Styles)"}</div>
       <div class="calc"><div class="l"><span>Ø Gewinn · Haltedauer</span><span class="num">${signed(st.avg)} · ${holdText(st.hold)}</span></div>
         <div class="l"><span>Erwarteter VK (Mittel letzte 3)</span><span class="num">${fmt(st.expVk)}</span></div>
@@ -611,7 +635,7 @@ function openBuy(key) {
     const ek = parseCoins($("k-ek").value), n = qty();
     for (let i = 0; i < n; i++) {
       S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, ek, ekDate: $("k-date").value || toISODate(new Date()),
-        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i });
+        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i, ...(g.wish?.offer ? { targetVk: g.wish.offer } : {}) });
       if (!g.wish) S.saveCard({ ...g.items[i], restock: "done" });
     }
     if (g.wish) useWish(g.wish, n);
@@ -619,7 +643,7 @@ function openBuy(key) {
   }, () => parseCoins($("k-ek").value) > 0);
   const upd = () => {
     const ek = parseCoins($("k-ek").value);
-    $("k-calc").innerHTML = calcHtml(ek, null);
+    $("k-calc").innerHTML = calcHtml(ek, g.wish?.offer || null);
     $("k-warn").innerHTML = st?.maxEk && ek > st.maxEk ? `<div class="warn">Über max. EK – beim üblichen VK von ${fmt(st.expVk)} bleiben nur ${signed(profitOf(ek, st.expVk))}.</div>` : "";
     refresh();
   };
@@ -854,7 +878,7 @@ function openAdd(existing) {
   update();
 }
 
-function openSell(card, presetPrice = card.listPrice) {
+function openSell(card, presetPrice = card.listPrice ?? card.targetVk) {
   const chips = [["ziel", "kalk. VK " + compact(target(card.ek))], ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
@@ -910,7 +934,7 @@ function openSnap(existing) {
 }
 
 function openList(card) {
-  const step = priceStep, start = card.listPrice || target(card.ek);
+  const step = priceStep, start = card.listPrice || card.targetVk || target(card.ek);
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
       <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · seit ${heldSince(card.ekDate)}</div></div></div></div>

@@ -64,8 +64,10 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
   gleiche Karten zusammengefasst („Amani 78 Basic ×3“), dazu Anzahl und Budget (Summe letzter EK).
 - **„Gekauft“**: EK ist mit dem letzten Wert vorausgefüllt (± Preisstufe, Anzahl wählbar) → wird als neuer Kauf gespeichert.
 - **✕** nimmt eine Karte ohne Nachkauf von der Liste.
-- **„+ Spieler zur Einkaufsliste“**: geplante Käufe selbst eintragen (Name, Rating, Chemistry Style, Preis, Anzahl) –
-  sie stehen oben mit „geplant“ und werden beim Kauf automatisch abgehakt (`depots/{Code}/wishes`).
+- Zwei Bereiche: **Nachkauf** (verkaufte Karten, Vorrang) und **Ersatzspieler** (von Hand geplant).
+- **„+ Ersatzspieler planen“**: Name, Rating, Chemistry Style, Preis (EK), voraussichtlicher Angebotspreis, Anzahl
+  (`depots/{Code}/wishes`). Ladenhüter ohne Nachkauf werden der Reihe nach durch geplante Ersatzspieler ersetzt.
+- Der voraussichtliche Angebotspreis wird beim Kauf übernommen und beim Listen/Verkaufen vorbelegt.
 - Käufe über **+** oder **per Screenshot** haken passende Einträge (gleicher Spieler & Rating) automatisch ab.
 - Alte Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste – importierte Karten, die ihr in der App verkauft, schon.
 - Im Bearbeiten-Fenster einer verkauften Karte: **„Auf die Einkaufsliste setzen“**, falls eine Karte fehlt.

@@ -66,6 +66,7 @@ async function firestoreBackend(config, depot) {
     if (c.vk != null) { d.sellPrice = c.vk; d.sellDate = ts(c.vkDate); }
     if (c.restock) d.restock = c.restock; // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
     if (c.adjustedAt) d.priceAdjustedAt = ts(c.adjustedAt); // bestätigte Preisanpassung (Ladenhüter)
+    if (c.targetVk) d.plannedSellPrice = c.targetVk;           // voraussichtlicher Angebotspreis (aus geplantem Kauf)
     if (c.listPrice != null && c.vk == null) { d.listPrice = c.listPrice; d.listDate = ts(c.listDate || toISODate(new Date())); } // auf der Transferliste
     return d;
   };
@@ -73,7 +74,7 @@ async function firestoreBackend(config, depot) {
     id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", ek: d.buyPrice, ekDate: day(d.buyDate),
     vk: d.sellPrice ?? null, vkDate: d.sellPrice != null ? day(d.sellDate) || day(d.buyDate) : null,
     owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null,
-    adjustedAt: day(d.priceAdjustedAt),
+    adjustedAt: day(d.priceAdjustedAt), targetVk: d.plannedSellPrice || null,
     listPrice: d.sellPrice == null ? d.listPrice ?? null : null, listDate: d.sellPrice == null ? day(d.listDate) : null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,
     ownTransferListValue: s.tlOwn, soldCards: s.sold, listedCards: s.listed, tradingProfit: s.profit, notes: s.notes || "" });
@@ -81,10 +82,10 @@ async function firestoreBackend(config, depot) {
     coins: d.coins || 0, tlOwn: d.ownTransferListValue || 0, sold: d.soldCards || 0, listed: d.listedCards || 0,
     profit: d.tradingProfit || 0, notes: d.notes || "" } : null;
 
-  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price, qty: w.qty || 1,
+  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price, qty: w.qty || 1, offer: w.offer || null,
     owner: w.owner || "", createdAt: fb.Timestamp.fromMillis(w.createdAt || Date.now()) });
   const wishFrom = (id, d) => d.name ? { id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", price: d.price || 0,
-    qty: d.qty || 1, owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
+    qty: d.qty || 1, offer: d.offer || null, owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
   const onErr = e => { data.error = e.message; emit(); };
   const unsubs = [
     // Mit Metadaten: zeigt, ob Änderungen noch nicht bei der Cloud angekommen sind (offline / Verbindung gestört)
