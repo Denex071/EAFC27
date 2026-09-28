@@ -47,6 +47,26 @@ final class PlayerStore: ObservableObject {
                 self?.isLoading = false
             }
         }
+        repo.startListeningIcons { [weak self] samples in
+            Task { @MainActor in
+                self?.learnedIcons = Dictionary(grouping: samples.compactMap { sample in
+                    IconPrint(hex: sample.hex).map { (sample.style, $0) }
+                }, by: \.0).mapValues { $0.map(\.1) }
+            }
+        }
+    }
+
+    // MARK: - Chemiestil-Symbole lernen
+
+    /// Vom Nutzer bestätigte Symbole je Stil – ergänzen die mitgelieferten Vorlagen.
+    @Published private(set) var learnedIcons: [String: [IconPrint]] = [:]
+
+    /// Merkt sich das Symbol, wenn die Erkennung unsicher war oder sich geirrt hat.
+    func learnIcon(_ print: IconPrint?, style: String, recognized: String?) {
+        guard let print, recognized != style, (learnedIcons[style]?.count ?? 0) < 30 else { return }
+        learnedIcons[style, default: []].append(print)
+        let sample = IconSample(style: style, hex: print.hex)
+        perform { try await $0.save(sample) }
     }
 
     // MARK: - Aktionen

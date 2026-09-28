@@ -20,8 +20,10 @@ Gewinn automatisch berechnen, alles in Echtzeit zwischen den iPhones synchronisi
   | Bildschirmvideo | ca. 3 Bilder/Sek., Ergebnis per Mehrheitsentscheid | wie oben |
 
   - Kontostand oben und Tab-Leiste unten werden ignoriert, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ ebenfalls.
-  - Der **Chemiestil** ist auf der Karte nur ein Symbol: Beim Kauf wird der zuletzt genutzte Stil dieses
-    Spielers vorbelegt; beim Verkauf kommt er aus dem Kauf (EA zeigt ihn nach dem Verkauf nicht mehr).
+  - Der **Chemiestil** wird am **Symbol auf der Karte** erkannt (alle 23 Stile, Detailseite und Listen).
+    Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des Spielers vorbelegt und markiert.
+    Korrigierte Stile werden als zusätzliche Vorlage gespeichert (gemeinsam im Depot) – die Erkennung lernt mit.
+    Beim Verkauf kommt der Stil aus dem Kauf (EA zeigt ihn nach dem Verkauf nicht mehr).
   - Doppelt gescannte Verkäufe (gleicher Spieler & Preis in den letzten 36 Std.) werden markiert und nicht automatisch verbucht.
   - Namen werden tolerant abgeglichen: „Fiamma Benítez“ im Spiel passt zu „Benitez“ aus der Excel.
 - **Autovervollständigung**: Bereits gehandelte Spieler werden beim Tippen vorgeschlagen und füllen
@@ -131,9 +133,11 @@ im Simulator.
 - **Chemiestile**: `FCTrader/Models/ChemistryStyles.swift`.
 - **Steuersatz**: `EATax.rate` in `FCTrader/Models/PlayerCard.swift`.
 - **Aufschläge für den kalk. VK**: `TargetPrice.tiers` in `FCTrader/Models/PlayerCard.swift`.
+- **Chemiestil-Symbole**: Vorlagen in `FCTrader/Models/ChemistryIconTemplates.swift`, neu erzeugen mit
+  `python3 Tools/chem_icons/build_templates.py <Ordner mit Item-Details-Screenshots, benannt nach Stil>`.
+  `Tools/chem_icons/iconlib.py` ist die Referenz-Implementierung von `ChemistryIconMatcher.swift`.
 
 ## Ideen für die nächsten Schritte
-- Chemiestil-Symbol auf der Karte per Bilderkennung zuordnen
 - Share-Extension: Screenshot direkt aus der Fotos-App an FC Trader senden
 - Zielpreis pro Karte + Push-Benachrichtigung / Erinnerung für Ladenhüter
 - Kartenversion (TOTW, Promo …) und Position als zusätzliche Felder

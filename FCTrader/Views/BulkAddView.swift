@@ -9,6 +9,9 @@ struct BulkAddView: View {
         var ratingText: String
         var chemistry: String
         var priceText: String
+        /// Am Kartensymbol erkannter Stil (nil = nicht sicher erkannt).
+        var recognizedStyle: String? = nil
+        var iconPrint: IconPrint? = nil
 
         var rating: Int? { Int(ratingText).flatMap { (1...99).contains($0) ? $0 : nil } }
         var price: Int? { Coins.parse(priceText) }
@@ -36,7 +39,7 @@ struct BulkAddView: View {
                 } header: {
                     Text(drafts.count == 1 ? "1 Kauf erkannt" : "\(drafts.count) Käufe erkannt")
                 } footer: {
-                    Text("Der Chemiestil ist auf der Karte nur als Symbol zu sehen und wird deshalb mit dem zuletzt genutzten Stil dieses Spielers vorbelegt – bitte kurz prüfen.")
+                    Text("Der Chemiestil wird am Symbol auf der Karte erkannt. Ist das nicht sicher möglich, ist der zuletzt genutzte Stil des Spielers vorbelegt. Korrekturen merkt sich die App für die nächsten Scans.")
                 }
 
                 ForEach($drafts) { $draft in
@@ -64,6 +67,17 @@ struct BulkAddView: View {
                                     .multilineTextAlignment(.trailing)
                             }
                             ChemistryPicker(selection: $draft.chemistry, recent: store.recentChemistryStyles)
+                            if draft.iconPrint != nil {
+                                if let recognized = draft.recognizedStyle, recognized == draft.chemistry {
+                                    Label("Am Symbol erkannt", systemImage: "checkmark.seal.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                } else if draft.recognizedStyle == nil {
+                                    Label("Symbol nicht sicher erkannt – bitte prüfen", systemImage: "questionmark.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
                             CoinField(title: "Einkaufspreis", text: $draft.priceText)
                             if let price = draft.price, price > 0 {
                                 Text("Kalk. VK \(Coins.format(TargetPrice.forBuyPrice(price))) · Break-even \(Coins.format(EATax.breakEven(buy: price)))")
@@ -108,14 +122,17 @@ struct BulkAddView: View {
             return Draft(
                 name: item.name ?? "",
                 ratingText: (item.rating ?? last?.rating).map(String.init) ?? "",
-                chemistry: last?.chemistryStyle ?? ChemistryStyles.none,
-                priceText: item.price.map(String.init) ?? ""
+                chemistry: item.chemistryStyle ?? last?.chemistryStyle ?? ChemistryStyles.none,
+                priceText: item.price.map(String.init) ?? "",
+                recognizedStyle: item.chemistryStyle,
+                iconPrint: item.iconPrint
             )
         }
     }
 
     private func save() {
         for draft in drafts where draft.include && draft.isValid {
+            store.learnIcon(draft.iconPrint, style: draft.chemistry, recognized: draft.recognizedStyle)
             store.save(PlayerCard(
                 name: draft.name.trimmingCharacters(in: .whitespaces),
                 rating: draft.rating ?? 0,

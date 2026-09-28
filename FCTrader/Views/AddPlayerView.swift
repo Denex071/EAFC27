@@ -225,15 +225,15 @@ struct AddPlayerView: View {
     }
 
     private func apply(_ result: ScanResult) {
-        // Verkaufs-Screenshot oder mehrere Karten (z. B. Kandidatenliste) → Sammelerfassung.
-        if existing == nil && (result.kind == .sale || result.items.count > 1) {
+        // Neue Karte: erkannte Käufe/Verkäufe in der Prüfansicht bestätigen (inkl. Chemiestil-Symbol & Lernen).
+        if existing == nil && !result.items.isEmpty {
             pendingScan = PendingScan(kind: result.kind, items: result.items)
             return
         }
         let last = result.name.flatMap(store.lastCard(named:))
         if let n = result.name { name = n }
         if let r = result.rating ?? last?.rating { ratingText = "\(r)" }
-        if let c = result.chemistryStyle ?? last?.chemistryStyle { chemistryStyle = c }
+        if let c = result.items.first?.chemistryStyle ?? result.chemistryStyle ?? last?.chemistryStyle { chemistryStyle = c }
         if let p = result.price {
             if isSold { sellPriceText = "\(p)" } else { buyPriceText = "\(p)" }
         }

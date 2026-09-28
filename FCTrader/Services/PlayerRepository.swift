@@ -16,6 +16,16 @@ protocol PlayerRepository: AnyObject {
     func delete(id: String) async throws
     func save(_ snapshot: WealthSnapshot) async throws
     func deleteSnapshot(id: String) async throws
+    /// Gelernte Chemiestil-Symbole (gemeinsam für alle im Depot).
+    func startListeningIcons(onChange: @escaping ([IconSample]) -> Void)
+    func save(_ sample: IconSample) async throws
+}
+
+/// Ein vom Nutzer bestätigtes Chemiestil-Symbol, das die Erkennung verbessert.
+struct IconSample: Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var style: String
+    var hex: String
 }
 
 // MARK: - Firestore
@@ -34,6 +44,7 @@ final class FirestoreRepository: PlayerRepository {
     private let db: Firestore
     private let cards: CollectionReference
     private let snapshots: CollectionReference
+    private let icons: CollectionReference
     private var listeners: [ListenerRegistration] = []
 
     init(depotCode: String) {
@@ -42,6 +53,24 @@ final class FirestoreRepository: PlayerRepository {
         let depot = db.collection("depots").document(depotCode)
         cards = depot.collection("players")
         snapshots = depot.collection("snapshots")
+        icons = depot.collection("chemIcons")
+    }
+
+    func startListeningIcons(onChange: @escaping ([IconSample]) -> Void) {
+        listeners.append(icons.addSnapshotListener { snapshot, _ in
+            onChange(snapshot?.documents.compactMap { doc in
+                guard let style = doc.data()["style"] as? String, let hex = doc.data()["hex"] as? String else { return nil }
+                return IconSample(id: doc.documentID, style: style, hex: hex)
+            } ?? [])
+        })
+    }
+
+    func save(_ sample: IconSample) async throws {
+        try await icons.document(sample.id).setData([
+            "style": sample.style,
+            "hex": sample.hex,
+            "createdAt": Timestamp(date: .now),
+        ])
     }
 
     func startListening(
@@ -228,6 +257,19 @@ final class DemoRepository: PlayerRepository {
     func deleteSnapshot(id: String) async throws {
         snapshots[id] = nil
         publish()
+    }
+
+    private var iconSamples: [IconSample] = []
+    private var onIcons: (([IconSample]) -> Void)?
+
+    func startListeningIcons(onChange: @escaping ([IconSample]) -> Void) {
+        onIcons = onChange
+        onChange(iconSamples)
+    }
+
+    func save(_ sample: IconSample) async throws {
+        iconSamples.append(sample)
+        onIcons?(iconSamples)
     }
 
     private func publish() {

@@ -4,11 +4,24 @@ import Vision
 import UIKit
 
 /// Ein erkannter Spieler auf einem Screenshot.
-struct ScannedItem: Identifiable, Hashable {
+struct ScannedItem: Identifiable {
+    /// Wo das Chemiestil-Symbol zu suchen ist (normierte Koordinaten, Ursprung oben links).
+    enum IconSearch {
+        /// Detailseite: Werte-Zeile "TEM SCH PAS …" als Bezug.
+        case detail(statsRow: CGRect)
+        /// Liste: Positionsangabe ("ZOM") und Abstand Rating → Position.
+        case list(position: CGRect, spacing: CGFloat)
+    }
+
     var id = UUID()
     var name: String?
     var rating: Int?
     var price: Int?
+    /// Am Kartensymbol erkannter Chemiestil (nil = unsicher / nicht gefunden).
+    var chemistryStyle: String?
+    /// Abdruck des Symbols – wird gespeichert, wenn der Nutzer den Stil bestätigt/korrigiert (Lernen).
+    var iconPrint: IconPrint?
+    var iconSearch: IconSearch?
 
     var isEmpty: Bool { name == nil && rating == nil && price == nil }
 }
@@ -56,8 +69,18 @@ struct TextLine {
     }
 }
 
+/// Ein Bild samt erkannter Textzeilen.
+struct RecognizedFrame {
+    let image: CGImage
+    let lines: [TextLine]
+}
+
 /// Texterkennung auf dem Gerät (Apple Vision) – keine Daten verlassen das iPhone.
 enum TextRecognizer {
+    static func frame(from image: CGImage) async throws -> RecognizedFrame {
+        RecognizedFrame(image: image, lines: try await lines(in: image))
+    }
+
     static func lines(in image: CGImage) async throws -> [TextLine] {
         try await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest()
@@ -81,7 +104,7 @@ enum TextRecognizer {
     }
 
     /// Einzelbilder (ca. 3 pro Sekunde, max. 20) aus einem Bildschirmvideo.
-    static func frames(inVideoAt url: URL) async throws -> [[TextLine]] {
+    static func frames(inVideoAt url: URL) async throws -> [RecognizedFrame] {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration).seconds
         let generator = AVAssetImageGenerator(asset: asset)
@@ -89,12 +112,12 @@ enum TextRecognizer {
         generator.maximumSize = CGSize(width: 1400, height: 3000)
 
         let frameCount = max(1, min(20, Int(duration * 3)))
-        var result: [[TextLine]] = []
+        var result: [RecognizedFrame] = []
         for i in 0..<frameCount {
             let seconds = frameCount == 1 ? 0 : duration * Double(i) / Double(frameCount - 1)
             let time = CMTime(seconds: min(seconds, max(duration - 0.05, 0)), preferredTimescale: 600)
             guard let frame = try? await generator.image(at: time).image else { continue }
-            result.append(try await lines(in: frame))
+            result.append(try await self.frame(from: frame))
         }
         return result
     }
@@ -129,7 +152,7 @@ enum ScreenshotParser {
     ]
 
     private static let statLabels: Set<String> = [
-        "TEM", "SCH", "PAS", "DRI", "DEF", "PHY", "VER", "KÖR", "HEC", "BAL", "ABS", "REF", "GES", "STE",
+        "TEM", "SCH", "PAS", "DRI", "DEF", "PHY", "VER", "KÖR", "HEC", "BAL", "ABS", "REF", "GES", "STE", "BSI", "TMP",
         "PAC", "SHO", "DIV", "HAN", "KIC", "SPD", "POS",
     ]
 
@@ -151,7 +174,8 @@ enum ScreenshotParser {
 
     // MARK: - Einstieg
 
-    static func parse(frames: [[TextLine]], knownNames: [String]) -> ScanResult {
+    static func parse(frames: [RecognizedFrame], knownNames: [String],
+                      learnedIcons: [String: [IconPrint]] = [:]) -> ScanResult {
         var result = ScanResult()
         var perFrame: [[ScannedItem]] = []
         var tokens: [String] = []
@@ -159,10 +183,13 @@ enum ScreenshotParser {
 
         var kindVotes: [ScanKind: Int] = [:]
         for frame in frames {
-            let frameKind = kind(of: frame)
+            let frameKind = kind(of: frame.lines)
             if frameKind != .unknown { kindVotes[frameKind, default: 0] += 1 }
-            let content = frame.filter { $0.rect.midY > contentTop && $0.rect.midY < contentBottom && !$0.text.isEmpty }
-            perFrame.append(items(in: content, knownNames: knownNames))
+            let content = frame.lines.filter { $0.rect.midY > contentTop && $0.rect.midY < contentBottom && !$0.text.isEmpty }
+            let found = items(in: content, knownNames: knownNames).map {
+                recognizeIcon(for: $0, in: frame.image, learned: learnedIcons)
+            }
+            perFrame.append(found)
             if result.chemistryStyle == nil { result.chemistryStyle = findChemistryStyle(in: content) }
             for line in content where line.text.count >= 2 && line.text.count <= 40 && seen.insert(line.lower).inserted {
                 tokens.append(line.text)
@@ -175,8 +202,24 @@ enum ScreenshotParser {
         return result
     }
 
-    static func parse(lines: [TextLine], knownNames: [String]) -> ScanResult {
-        parse(frames: [lines], knownNames: knownNames)
+    /// Schneidet das Chemiestil-Symbol aus und vergleicht es mit den Vorlagen.
+    private static func recognizeIcon(for item: ScannedItem, in image: CGImage,
+                                      learned: [String: [IconPrint]]) -> ScannedItem {
+        guard let search = item.iconSearch else { return item }
+        let w = CGFloat(image.width), h = CGFloat(image.height)
+        func pixels(_ r: CGRect) -> CGRect { CGRect(x: r.minX * w, y: r.minY * h, width: r.width * w, height: r.height * h) }
+
+        let box: (CGRect, Double)
+        switch search {
+        case .detail(let statsRow):
+            box = ChemistryIconMatcher.detailSearchBox(statsRow: pixels(statsRow))
+        case .list(let position, let spacing):
+            box = ChemistryIconMatcher.listSearchBox(position: pixels(position), spacing: Double(spacing * h))
+        }
+        var result = item
+        result.iconPrint = ChemistryIconMatcher.extract(from: image, box: box.0, unit: box.1)
+        result.chemistryStyle = result.iconPrint.flatMap { ChemistryIconMatcher.match($0, learned: learned)?.style }
+        return result
     }
 
     // MARK: - Ansichten
@@ -216,6 +259,14 @@ enum ScreenshotParser {
         // Name steht auf der Karte direkt über der Werte-Zeile (TEM SCH PAS …).
         let cardLines = lines.filter { $0.rect.midY < anchor.rect.midY }
         let statsRow = cardLines.first(where: isStatLabelRow)
+        if let statsRow {
+            // Die Werte-Zeile kann in mehrere Stücke zerfallen – alle Stücke derselben Zeile vereinen.
+            let row = cardLines
+                .filter { isStatLabelRow($0) && abs($0.rect.midY - statsRow.rect.midY) < statsRow.rect.height }
+                .map(\.rect)
+                .reduce(statsRow.rect) { $0.union($1) }
+            item.iconSearch = .detail(statsRow: row)
+        }
         let nameLine = cardLines
             .filter { line in isNameCandidate(line.text) && (statsRow.map { line.rect.midY < $0.rect.midY } ?? true) }
             .last
@@ -249,10 +300,22 @@ enum ScreenshotParser {
 
             // Rating: im Kartenbild links neben dem Namen.
             let reference = nameLine ?? label
-            item.rating = lines
+            let ratingHit = lines
                 .filter { $0.rect.maxX <= reference.rect.minX + 0.01 && abs($0.rect.midY - reference.rect.midY) < 0.05 }
-                .compactMap { line in rating(in: line.text).map { (abs(line.rect.midY - reference.rect.midY), $0) } }
-                .min { $0.0 < $1.0 }?.1
+                .compactMap { line in rating(in: line.text).map { (abs(line.rect.midY - reference.rect.midY), $0, line) } }
+                .min { $0.0 < $1.0 }
+            item.rating = ratingHit?.1
+
+            // Chemiestil-Symbol sitzt unter der Positionsangabe ("ZOM"), die unter dem Rating steht.
+            if let ratingLine = ratingHit?.2,
+               let position = lines.first(where: { line in
+                   positions.contains(line.text.uppercased())
+                       && line.rect.midY > ratingLine.rect.midY
+                       && line.rect.midY - ratingLine.rect.midY < 3 * ratingLine.rect.height
+                       && abs(line.rect.midX - ratingLine.rect.midX) < ratingLine.rect.width
+               }) {
+                item.iconSearch = .list(position: position.rect, spacing: position.rect.midY - ratingLine.rect.midY)
+            }
             return item.isEmpty ? nil : item
         }
     }
@@ -302,7 +365,9 @@ enum ScreenshotParser {
                 ScannedItem(
                     name: mostCommon(observations.compactMap(\.name)),
                     rating: mostCommon(observations.compactMap(\.rating)),
-                    price: mostCommon(observations.compactMap(\.price))
+                    price: mostCommon(observations.compactMap(\.price)),
+                    chemistryStyle: mostCommon(observations.compactMap(\.chemistryStyle)),
+                    iconPrint: observations.lazy.compactMap(\.iconPrint).first
                 )
             }
         }

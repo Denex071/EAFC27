@@ -11,6 +11,7 @@ struct ScanButton: View {
     let knownNames: [String]
     let onResult: (ScanResult) -> Void
 
+    @EnvironmentObject private var store: PlayerStore
     @State private var item: PhotosPickerItem?
     @State private var isScanning = false
     @State private var errorText: String?
@@ -52,7 +53,7 @@ struct ScanButton: View {
             self.item = nil
         }
         do {
-            let frames: [[TextLine]]
+            let frames: [RecognizedFrame]
             if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
                 guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
                     throw ScanError.unreadable
@@ -64,9 +65,12 @@ struct ScanButton: View {
                       let image = UIImage(data: data)?.cgImage else {
                     throw ScanError.unreadable
                 }
-                frames = [try await TextRecognizer.lines(in: image)]
+                frames = [try await TextRecognizer.frame(from: image)]
             }
-            let result = ScreenshotParser.parse(frames: frames, knownNames: knownNames)
+            let learned = store.learnedIcons
+            let result = await Task.detached(priority: .userInitiated) {
+                ScreenshotParser.parse(frames: frames, knownNames: knownNames, learnedIcons: learned)
+            }.value
             if result.isEmpty { throw ScanError.nothingFound }
             onResult(result)
         } catch {
