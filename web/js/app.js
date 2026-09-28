@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.1.4";
+const VERSION = "1.1.5";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -103,7 +103,9 @@ const recentChems = () => [...new Set([...S.data.cards].sort((a, b) => (b.create
 // ---------- Einkaufsliste (verkaufte Karten nachkaufen) ----------
 // Jeder Verkauf landet auf der Liste, bis er nachgekauft ("done") oder übersprungen ("skip") ist.
 // Verkäufe aus dem Excel-Import zählen nicht (die sind längst erledigt).
-const restockOpen = () => S.data.cards.filter(c => isSold(c) && !c.restock && !String(c.id).startsWith("import-"));
+// Auf der Einkaufsliste: in der App verkaufte Karten ("open"); alte Verkäufe aus dem Excel-Import nicht
+const onRestock = c => isSold(c) && (c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-")));
+const restockOpen = () => S.data.cards.filter(onRestock);
 const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
 function restockGroups() {
   const groups = new Map();
@@ -497,6 +499,7 @@ function openAdd(existing) {
       <div class="field"><label for="f-vkd">Verkaufsdatum</label><input id="f-vkd" type="date" value="${c.vkDate || toISODate(new Date())}"></div>
       <div id="f-calc-sell"></div></div>` : ""}
     <div class="group"><div class="field"><label for="f-notes">Notiz</label><textarea id="f-notes" rows="1" placeholder="optional">${esc(c.notes || "")}</textarea></div></div>
+    ${existing && isSold(existing) && !onRestock(existing) ? `<button type="button" class="mini" id="f-restock" style="align-self:flex-start">Auf die Einkaufsliste setzen</button>` : ""}
     ${existing ? `<button type="button" class="mini" id="f-del" style="align-self:flex-start;color:var(--bad)">Eintrag löschen</button>`
       : '<button type="button" class="primary" id="f-next">Sichern &amp; nächste Karte</button>'}
   </form>`;
@@ -518,7 +521,11 @@ function openAdd(existing) {
     const card = existing ? { ...existing } : { id: S.newId(), owner: settings.name, createdAt: Date.now() };
     Object.assign(card, { name: $("f-name").value.trim(), rating: +$("f-rating").value, chem: $("f-chem").value,
       ek: parseCoins($("f-ek").value), ekDate: $("f-ekd").value || toISODate(new Date()), notes: $("f-notes").value.trim() });
-    if (existing) { const vk = parseCoins($("f-vk").value); card.vk = vk || null; card.vkDate = vk ? ($("f-vkd").value || toISODate(new Date())) : null; }
+    if (existing) {
+      const vk = parseCoins($("f-vk").value); card.vk = vk || null; card.vkDate = vk ? ($("f-vkd").value || toISODate(new Date())) : null;
+      if (vk && !existing.vk) card.restock = "open"; // hier verkauft → auf die Einkaufsliste
+      if (!vk) card.restock = null;                  // Verkauf entfernt → von der Liste
+    }
     else { card.vk = null; card.vkDate = null; }
     S.saveCard(card);
     if (!existing && consumeRestock(card)) toast(`${card.name} auf der Einkaufsliste abgehakt`);
@@ -529,6 +536,7 @@ function openAdd(existing) {
     if (t.dataset.chem) $("f-chem").value = t.dataset.chem;
     if (t.dataset.app) { $("f-ek").value += t.dataset.app; $("f-ek").focus(); }
     if (t.id === "f-next") { save(); toast("Gespeichert – nächste Karte"); ["f-name", "f-rating", "f-ek", "f-notes"].forEach(i => $(i).value = ""); $("f-name").focus(); }
+    if (t.id === "f-restock") { S.saveCard({ ...existing, restock: "open" }); closeSheet(); return toast(`${existing.name} steht auf der Einkaufsliste`); }
     if (t.id === "f-del") return confirmButton(t, "Wirklich löschen?", () => { S.deleteCard(existing.id); closeSheet(); toast("Gelöscht"); });
     update();
   });
@@ -551,7 +559,7 @@ function openSell(card, presetPrice) {
     <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
-    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()) });
+    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), restock: "open" });
     closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)));
   }, () => parseCoins($("s-vk").value) > 0);
   const upd = () => { $("s-calc").innerHTML = calcHtml(card.ek, parseCoins($("s-vk").value)) || '<div class="calc"><div class="l">Preis eingeben</div></div>'; refresh(); };
@@ -627,7 +635,9 @@ function openImport() {
         : '<div class="err">In der Datei wurden keine Spieler gefunden. Erwartet wird der Reiter „Spieler“ mit den Spalten Name und EK.</div>';
       if ($("imp-go")) $("imp-go").onclick = async () => {
         $("imp-go").disabled = true; $("imp-go").textContent = "Wird importiert …";
-        await S.saveCards(parsed.cards); closeSheet(); toast(`${parsed.cards.length} Spieler importiert`);
+        // Einkaufslisten-Status bereits vorhandener Karten beim erneuten Import behalten
+        const prev = new Map(S.data.cards.map(c => [c.id, c]));
+        await S.saveCards(parsed.cards.map(c => prev.get(c.id)?.restock ? { ...c, restock: prev.get(c.id).restock } : c)); closeSheet(); toast(`${parsed.cards.length} Spieler importiert`);
       };
     } catch (err) { $("imp-result").innerHTML = `<div class="err">Import fehlgeschlagen: ${esc(err.message)}</div>`; }
   };
@@ -753,7 +763,7 @@ function openBulkSell(items) {
   const refresh = sheet(drafts.length === 1 ? "Verkauf prüfen" : `${drafts.length} Verkäufe prüfen`, body, "Verbuchen", () => {
     const date = $("v-date").value || toISODate(new Date());
     let total = 0;
-    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date }); }
+    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, restock: "open" }); }
     closeSheet(); toast(`Verbucht · Gewinn ${signed(total)}`);
   }, () => ready().length > 0);
   $("v-list").addEventListener("input", e => {

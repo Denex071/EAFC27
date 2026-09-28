@@ -65,7 +65,8 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 - **„Gekauft“**: EK ist mit dem letzten Wert vorausgefüllt (± Preisstufe, Anzahl wählbar) → wird als neuer Kauf gespeichert.
 - **✕** nimmt eine Karte ohne Nachkauf von der Liste.
 - Käufe über **+** oder **per Screenshot** haken passende Einträge (gleicher Spieler & Rating) automatisch ab.
-- Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste.
+- Alte Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste – importierte Karten, die ihr in der App verkauft, schon.
+- Im Bearbeiten-Fenster einer verkauften Karte: **„Auf die Einkaufsliste setzen“**, falls eine Karte fehlt.
 
 ### Screenshot / Bildschirmvideo scannen (Symbol neben dem +)
 Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
