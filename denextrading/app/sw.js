@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Firebase/Schriften aus dem Netz.
-const VERSION = "denextrading-v0.3.0";
+const VERSION = "denextrading-v0.3.1";
 const SHELL = ["./", "index.html", "css/app.css", "config.js", "manifest.webmanifest",
   "js/app.js", "js/calc.js", "js/store.js", "js/parser.js", "js/ocr-lines.js", "js/chemicons.js", "js/chem-templates.js",
   "js/ocr.js", "js/insights.js", "js/cloud.js", "js/recommendations.js", "impressum.html", "datenschutz.html", "aktion.html", "legal.css", "vendor/firebase.js", "icons/icon-192.png", "icons/apple-touch-icon.png", "icons/favicon-32.png"];

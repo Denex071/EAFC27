@@ -9,7 +9,7 @@ import { RECOMMENDATIONS } from "./recommendations.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "0.3.0-beta";
+const VERSION = "0.3.1-beta";
 const APP = "Denex Trading";
 
 // ---------- Einstellungen (pro Gerät) ----------
@@ -172,6 +172,8 @@ function renderAuth(mode = "login", note = "") {
     <h1>${APP}</h1>
     <p class="lead">Dein Trading-Tracker: Käufe und Verkäufe per Screenshot erfassen, Gewinn nach Tax, Nachkauf-Liste und Statistiken.</p>
     ${CLOUD ? "" : `<div class="banner">Konten sind noch nicht eingerichtet. Du kannst die App im Demo-Modus ausprobieren; Daten bleiben dann nur in diesem Browser.</div>`}
+    ${CLOUD ? `<div class="banner" style="display:flex;gap:8px;align-items:center;border-style:solid"><span class="tag listed" style="margin:0">BETA</span>
+      <span>Beta-Test: Dein Zugang ist <b>${BETA.hours} Stunden</b> ab der Registrierung gültig, mit bis zu <b>${BETA.maxEntries} Einträgen</b>.</span></div>` : ""}
     ${note ? `<div class="banner" style="border-style:solid">${esc(note)}</div>` : ""}
     ${CLOUD ? `<form id="a-form" class="form" autocomplete="on">
       <div class="group">
