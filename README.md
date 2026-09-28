@@ -76,7 +76,7 @@ Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein 
 | Kandidatenliste → Ersteigerte Items | alle Karten mit „Verkauft für“ (= bezahlter Preis) | mehrere Käufe auf einmal |
 | Transferliste → Verk. Items | alle verkauften Karten mit „Verkauft für“ | Verkäufe dem ältesten offenen Kauf zuordnen |
 | Item-Details „Endpreis 2.100“ | Name, Rating, Verkaufspreis | Verkauf verbuchen |
-| Bildschirmvideo | alle 0,5 s ein Einzelbild (gleiche übersprungen, max. 12) – jede durchgewischte Karte wird erfasst | wie oben |
+| Bildschirmvideo | alle 0,5 s ein ruhiges Einzelbild (gleiche und Wisch-Übergänge übersprungen, max. 12) – jede durchgewischte Karte wird erfasst | wie oben |
 
 - Kontostand, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ werden ignoriert.
 - **Chemiestil am Kartensymbol** (alle 23 Stile). Ist die Erkennung unsicher, wird der zuletzt genutzte Stil des

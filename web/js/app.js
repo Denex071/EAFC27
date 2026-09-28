@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -644,10 +644,11 @@ function exportCSV() {
 }
 
 // ---------- Scan ----------
+let scanTitle = "Screenshot wird ausgewertet";
 function progress(text, frac) {
   let el = document.getElementById("progress");
   if (!el) { el = document.createElement("div"); el.id = "progress"; el.className = "progress";
-    el.innerHTML = '<div class="box"><strong>Screenshot wird ausgewertet</strong><span class="meta" id="pg-text"></span><div class="track"><div class="fill" id="pg-fill"></div></div><span class="hint">Die Erkennung läuft auf deinem Gerät. Beim ersten Mal wird sie einmalig geladen.</span></div>';
+    el.innerHTML = '<div class="box"><strong>' + scanTitle + '</strong><span class="meta" id="pg-text"></span><div class="track"><div class="fill" id="pg-fill"></div></div><span class="hint">Die Erkennung läuft auf deinem Gerät. Beim ersten Mal wird sie einmalig geladen.</span></div>';
     document.body.appendChild(el); }
   document.getElementById("pg-text").textContent = text;
   document.getElementById("pg-fill").style.width = Math.round(frac * 100) + "%";
@@ -655,6 +656,8 @@ function progress(text, frac) {
 const hideProgress = () => document.getElementById("progress")?.remove();
 
 async function runScan(files) {
+  files = [...files];
+  scanTitle = files.some(f => f.type.startsWith("video")) ? "Video wird ausgewertet" : files.length > 1 ? "Screenshots werden ausgewertet" : "Screenshot wird ausgewertet";
   progress("Wird vorbereitet …", 0);
   try {
     const { scanFiles } = await import("./ocr.js");
