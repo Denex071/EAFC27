@@ -21,6 +21,7 @@ struct AddPlayerView: View {
     @State private var notes: String
 
     @State private var scanTokens: [String] = []
+    @State private var pendingScan: PendingScan?
     @State private var savedCount = 0
     @State private var showSavedToast = false
     @FocusState private var focus: Field?
@@ -76,6 +77,9 @@ struct AddPlayerView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .padding(.top, 8)
                 }
+            }
+            .sheet(item: $pendingScan) { scan in
+                PendingScanView(scan: scan) { dismiss() }
             }
             .onAppear {
                 if existing == nil { focus = .name }
@@ -221,9 +225,15 @@ struct AddPlayerView: View {
     }
 
     private func apply(_ result: ScanResult) {
+        // Verkaufs-Screenshot oder mehrere Karten (z. B. Kandidatenliste) → Sammelerfassung.
+        if existing == nil && (result.kind == .sale || result.items.count > 1) {
+            pendingScan = PendingScan(kind: result.kind, items: result.items)
+            return
+        }
+        let last = result.name.flatMap(store.lastCard(named:))
         if let n = result.name { name = n }
-        if let r = result.rating { ratingText = "\(r)" }
-        if let c = result.chemistryStyle { chemistryStyle = c }
+        if let r = result.rating ?? last?.rating { ratingText = "\(r)" }
+        if let c = result.chemistryStyle ?? last?.chemistryStyle { chemistryStyle = c }
         if let p = result.price {
             if isSold { sellPriceText = "\(p)" } else { buyPriceText = "\(p)" }
         }

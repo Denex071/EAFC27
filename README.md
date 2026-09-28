@@ -7,10 +7,23 @@ Gewinn automatisch berechnen, alles in Echtzeit zwischen den iPhones synchronisi
 
 ### Erfassung – so wenige Taps wie möglich
 - **Kauf erfassen**: Name, Rating, Chemiestil (Dropdown), Einkaufspreis, Kaufdatum (vorausgefüllt mit „jetzt“).
-- **Screenshot / Bildschirmvideo scannen**: Bild oder Aufnahme aus der Mediathek wählen → Name, Rating,
-  Chemiestil und Preis werden per Texterkennung (Apple Vision, läuft auf dem iPhone) vorausgefüllt.
-  Die Erkennung ist auf die **deutsche Spieloberfläche** ausgerichtet (Sofortkauf, Gekauft für …, deutsche Positionen).
-  Alle erkannten Texte erscheinen als Chips – Feld antippen, Chip antippen, fertig.
+- **Screenshot / Bildschirmvideo scannen** (Symbol ⌗ oben rechts in Übersicht und Spielerliste):
+  Texterkennung auf dem iPhone (Apple Vision), abgestimmt auf die deutsche Spieloberfläche.
+  Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
+
+  | Ansicht im Spiel | Erkannt | Aktion in der App |
+  |---|---|---|
+  | Item-Details „…ergattert f. 1.000“ | Name, Rating, Kaufpreis | Kauf prüfen & speichern |
+  | Kandidatenliste → Ersteigerte Items | alle Karten mit Name, Rating, „Verkauft für“ (= Kaufpreis) | mehrere Käufe auf einmal |
+  | Transferliste → Verk. Items | alle verkauften Karten mit „Verkauft für“ (= Verkaufspreis) | Verkäufe werden dem ältesten offenen Kauf zugeordnet |
+  | Item-Details „Endpreis 2.100“ | Name, Rating, Verkaufspreis | Verkauf verbuchen |
+  | Bildschirmvideo | ca. 3 Bilder/Sek., Ergebnis per Mehrheitsentscheid | wie oben |
+
+  - Kontostand oben und Tab-Leiste unten werden ignoriert, „Startpreis“, „Sofortkauf“ und „Schnellverkauf“ ebenfalls.
+  - Der **Chemiestil** ist auf der Karte nur ein Symbol: Beim Kauf wird der zuletzt genutzte Stil dieses
+    Spielers vorbelegt; beim Verkauf kommt er aus dem Kauf (EA zeigt ihn nach dem Verkauf nicht mehr).
+  - Doppelt gescannte Verkäufe (gleicher Spieler & Preis in den letzten 36 Std.) werden markiert und nicht automatisch verbucht.
+  - Namen werden tolerant abgeglichen: „Fiamma Benítez“ im Spiel passt zu „Benitez“ aus der Excel.
 - **Autovervollständigung**: Bereits gehandelte Spieler werden beim Tippen vorgeschlagen und füllen
   Rating + Chemiestil automatisch.
 - **Zuletzt genutzte Chemiestile** als Schnellauswahl neben dem Dropdown.
@@ -118,7 +131,7 @@ im Simulator.
 - **Aufschläge für den kalk. VK**: `TargetPrice.tiers` in `FCTrader/Models/PlayerCard.swift`.
 
 ## Ideen für die nächsten Schritte
-- Scan-Erkennung mit echten FC 27 Screenshots (deutsche Oberfläche) feinjustieren
+- Chemiestil-Symbol auf der Karte per Bilderkennung zuordnen
 - Share-Extension: Screenshot direkt aus der Fotos-App an FC Trader senden
 - Zielpreis pro Karte + Push-Benachrichtigung / Erinnerung für Ladenhüter
 - Kartenversion (TOTW, Promo …) und Position als zusätzliche Felder

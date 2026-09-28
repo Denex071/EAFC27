@@ -37,7 +37,10 @@ struct DashboardView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Übersicht")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { AddCardButton() }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    ScanAddButton()
+                    AddCardButton()
+                }
             }
             .overlay {
                 if store.isLoading { ProgressView() }

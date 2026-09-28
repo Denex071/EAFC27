@@ -89,7 +89,10 @@ struct PlayerListView: View {
             .navigationTitle("Spieler")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { sortMenu }
-                ToolbarItem(placement: .topBarTrailing) { AddCardButton() }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    ScanAddButton()
+                    AddCardButton()
+                }
             }
             .sheet(item: $editing) { AddPlayerView(existing: $0) }
             .sheet(item: $selling) { card in

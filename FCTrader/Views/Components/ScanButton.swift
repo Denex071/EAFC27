@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 /// Wählt einen Screenshot oder ein Bildschirmvideo aus der Mediathek und erkennt die Kartendaten.
 struct ScanButton: View {
     var title = "Screenshot / Video scannen"
+    /// Nur Symbol (für die Navigationsleiste).
+    var compact = false
     let knownNames: [String]
     let onResult: (ScanResult) -> Void
 
@@ -15,12 +17,20 @@ struct ScanButton: View {
 
     var body: some View {
         PhotosPicker(selection: $item, matching: .any(of: [.screenshots, .images, .videos, .screenRecordings])) {
-            HStack {
-                Image(systemName: "text.viewfinder")
-                    .font(.title3)
-                Text(isScanning ? "Erkenne Daten …" : title)
-                Spacer()
-                if isScanning { ProgressView() }
+            if compact {
+                if isScanning {
+                    ProgressView()
+                } else {
+                    Image(systemName: "text.viewfinder").font(.title3)
+                }
+            } else {
+                HStack {
+                    Image(systemName: "text.viewfinder")
+                        .font(.title3)
+                    Text(isScanning ? "Erkenne Daten …" : title)
+                    Spacer()
+                    if isScanning { ProgressView() }
+                }
             }
         }
         .disabled(isScanning)
@@ -42,21 +52,21 @@ struct ScanButton: View {
             self.item = nil
         }
         do {
-            let lines: [String]
+            let frames: [[TextLine]]
             if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
                 guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
                     throw ScanError.unreadable
                 }
                 defer { try? FileManager.default.removeItem(at: movie.url) }
-                lines = try await TextRecognizer.lines(inVideoAt: movie.url)
+                frames = try await TextRecognizer.frames(inVideoAt: movie.url)
             } else {
                 guard let data = try await item.loadTransferable(type: Data.self),
                       let image = UIImage(data: data)?.cgImage else {
                     throw ScanError.unreadable
                 }
-                lines = try await TextRecognizer.lines(in: image)
+                frames = [try await TextRecognizer.lines(in: image)]
             }
-            let result = ScreenshotParser.parse(lines: lines, knownNames: knownNames)
+            let result = ScreenshotParser.parse(frames: frames, knownNames: knownNames)
             if result.isEmpty { throw ScanError.nothingFound }
             onResult(result)
         } catch {

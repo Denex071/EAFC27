@@ -149,6 +149,34 @@ final class PlayerStore: ObservableObject {
             .map { $0 }
     }
 
+    /// Letzter Eintrag eines Spielers (für Rating & Chemiestil als Vorbelegung).
+    func lastCard(named name: String) -> PlayerCard? {
+        players
+            .filter { NameMatching.matches($0.name, name) }
+            .max { $0.createdAt < $1.createdAt }
+    }
+
+    /// Offene Käufe zu einem gescannten Spieler, älteste zuerst (so wird zuerst verkauft, was am längsten liegt).
+    /// Passt das Rating, werden diese Karten bevorzugt.
+    func openCards(matching name: String, rating: Int?) -> [PlayerCard] {
+        players
+            .filter { !$0.isSold && NameMatching.matches($0.name, name) }
+            .sorted { a, b in
+                let aFits = rating == nil || a.rating == rating
+                let bFits = rating == nil || b.rating == rating
+                if aFits != bFits { return aFits }
+                return a.buyDate < b.buyDate
+            }
+    }
+
+    /// Wurde dieser Verkauf vermutlich schon erfasst? (gleicher Spieler & Preis in den letzten 36 Stunden)
+    func recentSale(named name: String, price: Int) -> PlayerCard? {
+        let since = Date().addingTimeInterval(-36 * 3_600)
+        return players.first {
+            $0.sellPrice == price && ($0.sellDate ?? .distantPast) > since && NameMatching.matches($0.name, name)
+        }
+    }
+
     var knownNames: [String] { Array(Set(players.map(\.name))) }
 
     /// Export im Aufbau des Excel-Reiters "Spieler" – kann auch wieder importiert werden.
