@@ -14,9 +14,13 @@ const CONTENT_BOTTOM = 0.9;
 const PAID_LABELS = ["verkauft fur", "gekauft fur", "sold for", "bought for"];
 const WON_PHRASES = ["ergattert", "erworben"];
 const SOLD_PHRASES = ["endpreis"];
-const PURCHASE_MARKERS = ["kandidatenliste", "ersteigerte items", "ergattert", "transfer targets", "items won"];
-const SALE_MARKERS = ["transferliste", "verk. items", "verkaufte loschen", "nicht verk. items", "endpreis",
-  "alle neu anbieten", "transfer list", "sold items"];
+// Erkennungsmerkmale der Ansicht. Kauf-Seiten zeigen u. a. „Transferliste voll“ oder „Zu Mein Verein“ –
+// deshalb zählt „Transferliste“ nur als Verkauf, wenn es allein als Seitentitel steht.
+const PURCHASE_MARKERS = ["kandidatenliste", "ersteigerte items", "ergattert", "gluckwunsch", "zu mein verein",
+  "zur aktiven mannschaft", "alles an verein senden", "transferliste voll", "transfer targets", "items won"];
+const SALE_MARKERS = ["verk. items", "verkaufte loschen", "nicht verk. items", "endpreis", "alle neu anbieten",
+  "sold items"];
+const SALE_TITLES = ["transferliste", "transfer list"];
 const PRICE_KEYWORDS = ["ergattert", "verkauft fur", "gekauft fur", "kaufpreis", "verkaufspreis",
   "sofortkauf", "preis", "bought for", "sold for", "buy now", "price"];
 
@@ -114,13 +118,14 @@ export function canonicalName(text, knownNames) {
 
 // ---------- Ansichten ----------
 
-function kindOf(lines) {
+export function kindOf(lines) {
   if (lines.some(l => WON_PHRASES.some(k => has(l, k)))) return "purchase";
   if (lines.some(l => SOLD_PHRASES.some(k => has(l, k)))) return "sale";
   const p = lines.filter(l => PURCHASE_MARKERS.some(k => has(l, k))).length;
-  const s = lines.filter(l => SALE_MARKERS.some(k => has(l, k))).length;
-  if (p === s) return "unknown";
-  return p > s ? "purchase" : "sale";
+  const s = lines.filter(l => SALE_MARKERS.some(k => has(l, k))
+    || SALE_TITLES.some(k => compact(l.text).replace(/[^a-z]/g, "") === k.replace(/\s+/g, ""))).length;
+  if (p === 0 && s === 0) return "unknown";
+  return s > p ? "sale" : "purchase";
 }
 
 function numberBelow(label, lines, maxDistance, alignX, preferLast = false) {

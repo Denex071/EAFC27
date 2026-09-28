@@ -59,6 +59,14 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 - **Verkaufen** (Knopf „VK“): nur Preis eintippen, Gewinn wird live berechnet. Schnellauswahl
   „Ziel“ (kalk. VK), „Break-even“, „+10 %“, „+20 %“ (inkl. Preisstufen des Transfermarkts).
 
+### Einkaufsliste (Tab „Einkauf“)
+- Jede als verkauft markierte Karte erscheint automatisch mit **Name, Rating, Chemiestil und letztem EK** –
+  gleiche Karten zusammengefasst („Amani 78 Basic ×3“), dazu Anzahl und Budget (Summe letzter EK).
+- **„Gekauft“**: EK ist mit dem letzten Wert vorausgefüllt (± Preisstufe, Anzahl wählbar) → wird als neuer Kauf gespeichert.
+- **✕** nimmt eine Karte ohne Nachkauf von der Liste.
+- Käufe über **+** oder **per Screenshot** haken passende Einträge (gleicher Spieler & Rating) automatisch ab.
+- Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste.
+
 ### Screenshot / Bildschirmvideo scannen (Symbol neben dem +)
 Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
 

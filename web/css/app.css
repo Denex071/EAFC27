@@ -122,3 +122,7 @@ html{padding-top:env(safe-area-inset-top,0px)}
 .secondary{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--surface2);color:var(--text);font-weight:700;padding:12px;cursor:pointer;font-size:15px}
 input[type=file].hidden{display:none}
 .field textarea{flex:1;background:transparent;border:0;color:inherit;font:inherit;resize:vertical;min-height:40px;outline:none}
+/* Einkaufsliste */
+nav.tabs .ico{position:relative;display:inline-flex}
+.tabbadge{position:absolute;top:-5px;right:-11px;background:var(--bad);color:#fff;font:700 10px/1 var(--body);border-radius:999px;padding:3px 5px;min-width:17px;text-align:center}
+.gold-text{color:var(--gold);font-weight:700}

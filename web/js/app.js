@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -100,6 +100,31 @@ const openCardsFor = (name, rating) => S.data.cards.filter(c => !isSold(c) && sa
   .sort((a, b) => ((rating && a.rating !== rating) - (rating && b.rating !== rating)) || a.ekDate.localeCompare(b.ekDate));
 const recentChems = () => [...new Set([...S.data.cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map(c => c.chem))].slice(0, 5);
 
+// ---------- Einkaufsliste (verkaufte Karten nachkaufen) ----------
+// Jeder Verkauf landet auf der Liste, bis er nachgekauft ("done") oder übersprungen ("skip") ist.
+// Verkäufe aus dem Excel-Import zählen nicht (die sind längst erledigt).
+const restockOpen = () => S.data.cards.filter(c => isSold(c) && !c.restock && !String(c.id).startsWith("import-"));
+const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
+function restockGroups() {
+  const groups = new Map();
+  for (const c of restockOpen().sort((a, b) => a.vkDate.localeCompare(b.vkDate))) {
+    const k = restockKey(c);
+    if (!groups.has(k)) groups.set(k, { key: k, items: [] });
+    groups.get(k).items.push(c);
+  }
+  return [...groups.values()].map(g => {
+    const newest = g.items[g.items.length - 1];
+    return { ...g, name: newest.name, rating: newest.rating, chem: newest.chem, lastEk: newest.ek, lastVk: newest.vk, soldOn: newest.vkDate };
+  }).sort((a, b) => b.soldOn.localeCompare(a.soldOn) || a.name.localeCompare(b.name));
+}
+/// Neuer Kauf erfasst → passenden offenen Listeneintrag (gleicher Spieler & Rating, bevorzugt gleicher Stil) abhaken.
+function consumeRestock(card) {
+  const match = restockOpen().filter(c => sameName(c.name, card.name) && c.rating === card.rating)
+    .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem) || a.vkDate.localeCompare(b.vkDate))[0];
+  if (match) S.saveCard({ ...match, restock: "done" });
+  return !!match;
+}
+
 // ---------- Bausteine ----------
 const badgeClass = r => r >= 86 ? "b-special" : r >= 75 ? "b-gold" : r >= 65 ? "b-silver" : "b-bronze";
 const badge = (r, sm) => `<div class="badge ${sm ? "sm" : ""} ${badgeClass(r)} num">${r || "–"}</div>`;
@@ -161,12 +186,14 @@ function renderOnboarding() {
 
 // ---------- Hauptansicht ----------
 const ui = { tab: LS.get("fct-tab") || "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9 };
-const TITLES = { dash: "Übersicht", list: "Spieler", wealth: "Vermögen", more: "Einstellungen" };
+const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", wealth: "Vermögen", more: "Einstellungen" };
+const TABS = ["dash", "list", "buy", "wealth", "more"];
 const ICONS = {
   scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 10h8M8 14h5"/></svg>',
   add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
+  buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>',
   wealth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
 };
@@ -179,7 +206,7 @@ function renderShell() {
       <button class="iconbtn gold" id="addBtn" aria-label="Kauf erfassen" title="Kauf erfassen">${ICONS.add}</button>
     </header>
     <main id="view"></main></div>
-    <nav class="tabs"><div class="inner">${["dash", "list", "wealth", "more"].map(t => `<button data-tab="${t}">${ICONS[t]}${TITLES[t]}</button>`).join("")}</div></nav>`;
+    <nav class="tabs"><div class="inner">${TABS.map(t => `<button data-tab="${t}"><span class="ico">${ICONS[t]}<span class="tabbadge" data-badge="${t}" hidden></span></span>${TITLES[t]}</button>`).join("")}</div></nav>`;
   root.querySelector("nav.tabs").onclick = e => {
     const b = e.target.closest("[data-tab]"); if (!b) return;
     ui.tab = b.dataset.tab; LS.set("fct-tab", ui.tab); render(); scrollTo(0, 0);
@@ -197,11 +224,14 @@ function render() {
   if (!view) return;
   document.getElementById("title").textContent = TITLES[ui.tab];
   root.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === ui.tab ? "page" : "false"));
+  const badge = root.querySelector('[data-badge="buy"]');
+  const openBuys = restockOpen().length;
+  badge.hidden = !openBuys; badge.textContent = openBuys > 99 ? "99+" : openBuys;
   const top = [];
   if (S.data.error) top.push(`<div class="err">${esc(S.data.error)}</div>`);
   if (S.data.mode === "demo") top.push(`<div class="banner">Demo-Modus – Daten bleiben nur in diesem Browser.</div>`);
   if (!S.data.ready) { view.innerHTML = top.join("") + `<div class="empty">Daten werden geladen …</div>`; return; }
-  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, wealth: wealthHtml, more: moreHtml })[ui.tab]();
+  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, wealth: wealthHtml, more: moreHtml })[ui.tab || "dash"]();
   if (ui.tab === "list") bindListInputs();
 }
 
@@ -295,6 +325,60 @@ function bindListInputs() {
   document.getElementById("sort").onchange = e => { ui.sort = e.target.value; render(); };
 }
 
+function buyHtml() {
+  const groups = restockGroups();
+  if (!groups.length) return `<section class="card"><h2>Alles nachgekauft</h2>
+    <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemiestil und letztem EK – zum Nachkaufen.</p></section>`;
+  const count = sum(groups.map(g => g.items.length));
+  const budget = sum(groups.map(g => g.lastEk * g.items.length));
+  return `<section class="tiles">
+      <div class="tile"><div class="t">Nachzukaufen</div><div class="v num">${count}</div><div class="d">${groups.length} verschiedene Karten</div></div>
+      <div class="tile"><div class="t">Budget (letzter EK)</div><div class="v num">${fmt(budget)}</div><div class="d">Coins für alle Käufe</div></div></section>
+    <div class="list">${groups.map(g => `<div class="item" style="cursor:default">
+      ${badge(g.rating)}
+      <div class="grow" style="min-width:0"><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}</div>
+        <div class="meta">${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}</div></div>
+      <div class="right" style="display:flex;gap:6px">
+        <button class="mini" data-skip="${esc(g.key)}" aria-label="Überspringen" title="Überspringen">✕</button>
+        <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`).join("")}</div>
+    <p class="hint">„Gekauft“ speichert die Karte als neuen Kauf – nur den EK anpassen. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.</p>`;
+}
+
+function openBuy(key) {
+  const g = restockGroups().find(x => x.key === key); if (!g) return;
+  const step = p => p < 1000 ? 50 : p < 10000 ? 100 : p < 50000 ? 250 : p < 100000 ? 500 : 1000;
+  const body = `<div class="form">
+    <div class="group"><div class="field" style="border:0">${badge(g.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(g.name)}</div>
+      <div class="meta">zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}</div></div></div></div>
+    <div class="group"><div class="gh">Nachkauf</div>
+      <div class="field"><label for="k-ek">Einkaufspreis</label><input id="k-ek" inputmode="decimal" value="${g.lastEk}"></div>
+      <div class="chips"><button type="button" class="chip" data-d="-1">− Stufe</button><button type="button" class="chip" data-d="1">+ Stufe</button>
+        <button type="button" class="chip" data-d="0">Letzter EK</button><button type="button" class="chip" data-app="000">+000</button></div>
+      ${g.items.length > 1 ? `<div class="field"><label for="k-qty">Anzahl</label><select id="k-qty">${g.items.map((_, i) => `<option ${i === 0 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}
+      <div class="field"><label for="k-chem">Chemiestil</label><select id="k-chem">${chemOptions(g.chem)}</select></div>
+      <div class="field"><label for="k-date">Kaufdatum</label><input id="k-date" type="date" value="${toISODate(new Date())}"></div>
+      <div id="k-calc"></div></div></div>`;
+  const qty = () => $("k-qty") ? +$("k-qty").value : 1;
+  const refresh = sheet("Nachkauf erfassen", body, "Gekauft", () => {
+    const ek = parseCoins($("k-ek").value), n = qty();
+    for (let i = 0; i < n; i++) {
+      S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, ek, ekDate: $("k-date").value || toISODate(new Date()),
+        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i });
+      S.saveCard({ ...g.items[i], restock: "done" });
+    }
+    closeSheet(); toast(n > 1 ? `${n}× ${g.name} nachgekauft` : `${g.name} nachgekauft`);
+  }, () => parseCoins($("k-ek").value) > 0);
+  const upd = () => { $("k-calc").innerHTML = calcHtml(parseCoins($("k-ek").value), null); refresh(); };
+  layer.querySelector(".sheet").addEventListener("click", e => {
+    const d = e.target.closest("[data-d]"), a = e.target.closest("[data-app]");
+    if (d) { const v = parseCoins($("k-ek").value) || g.lastEk; $("k-ek").value = +d.dataset.d === 0 ? g.lastEk : Math.max(150, v + +d.dataset.d * step(v)); }
+    if (a) $("k-ek").value += a.dataset.app;
+    if (d || a) upd();
+  });
+  $("k-ek").addEventListener("input", upd);
+  upd();
+}
+
 function wealthHtml() {
   const snaps = [...S.data.snaps].sort((a, b) => b.date.localeCompare(a.date));
   const total = s => s.team + s.tl + s.coins;
@@ -350,6 +434,12 @@ function onViewClick(e) {
   const d = t.closest("[data-day]"); if (d) { ui.sel = +d.dataset.day; return render(); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
+  const buy = t.closest("[data-buy]"); if (buy) return openBuy(buy.dataset.buy);
+  const skip = t.closest("[data-skip]");
+  if (skip) return confirmButton(skip, "Überspringen?", () => {
+    const g = restockGroups().find(x => x.key === skip.dataset.skip);
+    if (g) { S.saveCard({ ...g.items[0], restock: "skip" }); toast(`${g.name} von der Liste genommen`); }
+  });
   const a = t.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "ranking") openRanking();
@@ -431,6 +521,7 @@ function openAdd(existing) {
     if (existing) { const vk = parseCoins($("f-vk").value); card.vk = vk || null; card.vkDate = vk ? ($("f-vkd").value || toISODate(new Date())) : null; }
     else { card.vk = null; card.vkDate = null; }
     S.saveCard(card);
+    if (!existing && consumeRestock(card)) toast(`${card.name} auf der Einkaufsliste abgehakt`);
   }
   layer.querySelector(".sheet").addEventListener("click", e => {
     const t = e.target.closest("button"); if (!t) return;
@@ -606,12 +697,16 @@ function openBulkAdd(items) {
     <p class="hint">Chemiestil wird am Symbol erkannt. Ist das unsicher, ist der zuletzt genutzte Stil des Spielers vorbelegt.</p></div>`;
   const refresh = sheet(drafts.length === 1 ? "Kauf prüfen" : `${drafts.length} Käufe prüfen`, body, "Sichern", () => {
     const date = $("b-date").value || toISODate(new Date());
+    let ticked = 0;
     for (const d of ready()) {
       learnIcon(d.bits, d.chem, d.recognized);
-      S.saveCard({ id: S.newId(), name: d.name.trim(), rating: +d.rating, chem: d.chem, ek: parseCoins(d.price), ekDate: date,
-        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() });
+      const card = { id: S.newId(), name: d.name.trim(), rating: +d.rating, chem: d.chem, ek: parseCoins(d.price), ekDate: date,
+        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() };
+      S.saveCard(card);
+      if (consumeRestock(card)) ticked++;
     }
-    closeSheet(); toast(ready().length > 1 ? `${ready().length} Käufe gespeichert` : "Kauf gespeichert");
+    closeSheet();
+    toast((ready().length > 1 ? `${ready().length} Käufe gespeichert` : "Kauf gespeichert") + (ticked ? ` · ${ticked} auf der Einkaufsliste abgehakt` : ""));
   }, () => ready().length > 0);
   $("b-list").addEventListener("input", e => {
     const g = e.target.closest("[data-i]"), k = e.target.dataset.k; if (!g || !k) return;

@@ -57,12 +57,13 @@ async function firestoreBackend(config, depot) {
     const d = { name: c.name, rating: c.rating, chemistryStyle: c.chem, buyPrice: c.ek, buyDate: ts(c.ekDate),
       owner: c.owner || "", notes: c.notes || "", createdAt: fb.Timestamp.fromMillis(c.createdAt || Date.now()) };
     if (c.vk != null) { d.sellPrice = c.vk; d.sellDate = ts(c.vkDate); }
+    if (c.restock) d.restock = c.restock; // Einkaufsliste: "done" (nachgekauft) oder "skip" (übersprungen)
     return d;
   };
   const cardFrom = (id, d) => (d.name && d.buyPrice != null && d.buyDate) ? {
     id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", ek: d.buyPrice, ekDate: day(d.buyDate),
     vk: d.sellPrice ?? null, vkDate: d.sellPrice != null ? day(d.sellDate) || day(d.buyDate) : null,
-    owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
+    owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,
     ownTransferListValue: s.tlOwn, soldCards: s.sold, listedCards: s.listed, tradingProfit: s.profit, notes: s.notes || "" });
   const snapFrom = (id, d) => d.date ? { id, date: day(d.date), team: d.teamValue || 0, tl: d.transferListValue || 0,
