@@ -8,7 +8,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "0.1.0-beta";
+const VERSION = "0.2.0-beta";
 const APP = "Denex Trading";
 
 // ---------- Einstellungen (pro Gerät) ----------
@@ -110,8 +110,7 @@ const recentChems = () => [...new Set([...S.data.cards].sort((a, b) => (b.create
 
 // ---------- Einkaufsliste (verkaufte Karten nachkaufen) ----------
 // Jeder Verkauf landet auf der Liste, bis er nachgekauft ("done") oder übersprungen ("skip") ist.
-// Verkäufe aus dem Excel-Import zählen nicht (die sind längst erledigt).
-// Auf der Einkaufsliste: in der App verkaufte Karten ("open"); alte Verkäufe aus dem Excel-Import nicht
+// Auf der Einkaufsliste: in der App verkaufte Karten ("open")
 const onRestock = c => isSold(c) && (c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-")));
 const restockOpen = () => S.data.cards.filter(onRestock);
 const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
@@ -264,9 +263,7 @@ function dashHtml() {
   const s = stats(S.data.cards, ui.period);
   const tile = (t, v, d) => `<div class="tile"><div class="t">${t}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`;
   const per = PERIODS.find(p => p[0] === ui.period)[1];
-  if (!S.data.cards.length) return `<section class="card"><h2>Willkommen</h2>
-    <p class="meta" style="white-space:normal;margin:0">Noch keine Spieler erfasst. Importiere eure Excel unter „Einstellungen“ oder erfasse den ersten Kauf mit + bzw. per Screenshot.</p>
-    <button class="primary" data-act="import">Excel importieren</button></section>`;
+  if (!S.data.cards.length) return firstStepsHtml();
   return `${seg(PERIODS, ui.period, "period")}
     ${backupDue() ? `<div class="banner" style="display:flex;gap:10px;align-items:center;border-style:solid"><span class="grow" style="flex:1">Letzte Sicherung ${backupAge()}. Einmal pro Woche ein Backup herunterladen.</span>
       <button class="mini gold" data-act="backup">Backup</button></div>` : ""}
@@ -570,7 +567,10 @@ function wealthHtml() {
 
 function moreHtml() {
   const demo = S.data.mode === "demo";
-  return `${accountHtml(demo)}
+  return `<section class="card"><h2>Hilfe</h2>
+      <p class="meta" style="white-space:normal;margin:0">Alle Funktionen kurz erklärt – vom ersten Kauf bis zu den Statistiken.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini gold" data-act="help">Anleitung öffnen</button><button class="mini" data-act="tour">Einführung erneut zeigen</button></div></section>
+    ${accountHtml(demo)}
     ${demo ? "" : teamHtml()}
     <section class="card"><h2>Trading-Ziele</h2>
       <p class="meta" style="white-space:normal;margin:0">Gilt für das ganze Depot – ein eingeladener Partner sieht dieselben Werte.</p>
@@ -584,7 +584,6 @@ function moreHtml() {
       <label class="secondary" for="restore-file" style="text-align:center">Backup wiederherstellen</label>
       <input class="hidden" type="file" id="restore-file" accept=".json,application/json">
       <p class="meta" style="white-space:normal;margin:0">Letzte Sicherung auf diesem Gerät: ${backupAge()}. Das Backup enthält Spieler, Wochenstände, gelernte Symbole und Einstellungen.</p>
-      <button class="secondary" data-act="import">Aus Excel importieren (.xlsx oder .csv)</button>
       <button class="secondary" data-act="export">Als CSV exportieren</button>
       ${demo ? `<button class="mini" data-act="reset">Demo-Daten zurücksetzen</button>` : ""}</section>
     <section class="card"><h2>Auf dem iPhone installieren</h2>
@@ -600,6 +599,84 @@ function moreHtml() {
         Alle Marken gehören ihren jeweiligen Inhabern.</p>
       <div style="display:flex;gap:8px"><a class="mini" href="impressum.html">Impressum</a><a class="mini" href="datenschutz.html">Datenschutz</a></div></section>
     <p class="hint">${APP} ${VERSION} · ${demo ? "Demo" : "Cloud"}</p>`;
+}
+
+// ---------- Hilfe ----------
+function firstStepsHtml() {
+  const step = (n, title, text, btn) => `<div class="row" style="align-items:flex-start"><span class="badge sm b-gold num">${n}</span>
+    <div class="grow"><div class="name">${title}</div><div class="stat-line">${text}</div>${btn || ""}</div></div>`;
+  return `<section class="card"><h2>Erste Schritte</h2>
+    ${step(1, "Ersten Kauf erfassen", "Tippe oben auf <b>+</b> und gib Name, Rating, Chemistry Style und Einkaufspreis ein.",
+      '<button class="mini gold" data-act="add" style="margin-top:6px">Kauf erfassen</button>')}
+    ${step(2, "Oder per Screenshot", "Nach einem Kauf im Spiel einen Screenshot der Item-Details machen und über das <b>Scan-Symbol</b> neben dem + hochladen. Die App liest Name, Rating, Style und Preis selbst.",
+      '<label class="mini" for="scanInput" style="display:inline-block;margin-top:6px">Screenshot wählen</label>')}
+    ${step(3, "Verkaufen", "In der Spielerliste bei der Karte auf <b>VK</b> tippen und den Verkaufspreis eintragen – der Gewinn nach 5 % Tax wird sofort berechnet.")}
+    ${step(4, "Nachkaufen", "Verkaufte Karten landen im Tab <b>Einkauf</b>. Dort siehst du den letzten EK und den maximalen EK, der sich noch lohnt.")}
+    <button class="secondary" data-act="help">Ausführliche Anleitung</button></section>`;
+}
+
+const TOUR = [
+  ["📈", "Willkommen bei Denex Trading", "Dein Tracker für Karten-Trading: jeder Kauf und Verkauf an einem Ort, Gewinn automatisch nach 5 % Tax."],
+  ["＋", "Käufe erfassen", "Oben rechts auf <b>+</b> tippen – oder das <b>Scan-Symbol</b> daneben nutzen und einen Screenshot bzw. ein Bildschirmvideo aus dem Spiel hochladen. Die App erkennt Name, Rating, Chemistry Style und Preis."],
+  ["💰", "Verkaufen", "Im Tab <b>Spieler</b> bei einer Karte auf <b>VK</b> tippen. Schnellwahl für kalk. VK und Break-even – der Gewinn wird live angezeigt. Verkäufe können auch per Screenshot der Transferliste erfasst werden."],
+  ["🛒", "Einkaufsliste", "Jede verkaufte Karte erscheint im Tab <b>Einkauf</b> zum Nachkaufen – mit letztem EK, bisherigen Gewinnen und dem <b>max. EK</b>, bis zu dem sich der Nachkauf noch lohnt."],
+  ["📊", "Statistiken", "Die <b>Übersicht</b> zeigt Gewinn, Wochenziel, Ladenhüter und was sich am meisten lohnt. Ziele und Aufschläge stellst du unter <b>Einstellungen</b> ein – dort findest du auch jederzeit die Anleitung."],
+];
+function openTour(i = 0) {
+  const [icon, title, text] = TOUR[i], last = i === TOUR.length - 1;
+  const body = `<div class="form" style="text-align:center;gap:14px;padding:6px 4px 4px">
+    <div style="font-size:46px;line-height:1">${icon}</div>
+    <h2 style="font:700 24px/1.15 var(--display);margin:0">${title}</h2>
+    <p class="meta" style="white-space:normal;margin:0;font-size:15px;color:var(--text)">${text}</p>
+    <div style="display:flex;justify-content:center;gap:6px" aria-hidden="true">${TOUR.map((_, k) => `<span style="width:8px;height:8px;border-radius:50%;background:${k === i ? "var(--gold)" : "var(--line)"}"></span>`).join("")}</div>
+    <button class="primary" id="tour-next">${last ? "Los geht’s" : "Weiter"}</button>
+    ${last ? "" : '<button class="link" id="tour-skip" style="align-self:center">Überspringen</button>'}</div>`;
+  sheet(`${i + 1} / ${TOUR.length}`, body);
+  const done = () => { LS.set("dxt-tour", "1"); closeSheet(); };
+  $("tour-next").onclick = () => last ? done() : openTour(i + 1);
+  if ($("tour-skip")) $("tour-skip").onclick = done;
+  layer.querySelector("[data-close]").addEventListener("click", () => LS.set("dxt-tour", "1"));
+}
+const maybeTour = () => { if (!LS.get("dxt-tour") && !layer.innerHTML) openTour(); };
+
+const HELP = [
+  ["Kauf erfassen", `<p>Oben rechts auf <b>+</b> tippen. Name, Rating, Chemistry Style und Einkaufspreis eingeben – das Kaufdatum ist mit heute vorbelegt.</p>
+    <ul><li>Bekannte Spieler werden beim Tippen vorgeschlagen; Rating und Style werden übernommen.</li>
+    <li>Preise gehen auch kurz: <b>12500</b>, <b>12.500</b>, <b>12,5k</b> oder <b>1.2m</b>.</li>
+    <li>Mehrere Käufe hintereinander: <b>„Sichern & nächste Karte“</b>.</li></ul>`],
+  ["Screenshot oder Video scannen", `<p>Das <b>Scan-Symbol</b> neben dem + öffnet deine Fotos. Die Erkennung läuft komplett auf deinem Handy – Bilder werden nicht hochgeladen.</p>
+    <ul><li><b>Kauf:</b> Item-Details nach dem Kauf („Item gekauft für …“ bzw. „… ergattert“) oder die Liste „Ersteigerte Items“.</li>
+    <li><b>Verkauf:</b> Transferliste → „Verk. Items“ oder Item-Details mit „Endpreis“.</li>
+    <li><b>Video:</b> Bildschirmaufnahme starten und langsam durch mehrere Karten wischen – jede Karte wird erfasst.</li>
+    <li>Den Chemistry Style erkennt die App am Symbol. Ist sie unsicher, ist der Stil markiert – deine Korrektur wird gelernt.</li>
+    <li>Die Erkennung ist aktuell auf die <b>deutsche Spielsprache</b> ausgelegt. Beim ersten Scan wird sie einmalig geladen (~9 MB).</li></ul>`],
+  ["Verkaufen & Gewinn", `<p>Im Tab <b>Spieler</b> bei der Karte auf <b>VK</b> tippen, Verkaufspreis eintragen, fertig.</p>
+    <ul><li><b>Gewinn = VK − 5 % Tax − EK.</b></li>
+    <li>Schnellwahl: <b>kalk. VK</b> (dein Zielpreis), <b>Break-even</b> (kleinster Preis ohne Verlust), +10 % / +20 %.</li>
+    <li>Einen Verkauf rückgängig machen: Karte antippen und den Verkaufspreis leeren.</li></ul>`],
+  ["Transferliste („gelistet“)", `<p>Offene Karte antippen → <b>Transferliste → Listen</b> und den Angebotspreis eintragen. Gelistete Karten findest du in der Spielerliste unter <b>Gelistet</b>; beim Verkaufen ist der Preis schon vorbelegt.</p>`],
+  ["Einkaufsliste & max. EK", `<p>Jede verkaufte Karte erscheint im Tab <b>Einkauf</b> mit Name, Rating, Style und letztem EK. Gleiche Karten werden zusammengefasst.</p>
+    <ul><li><b>Gekauft</b> speichert den Nachkauf – meist nur den EK anpassen.</li>
+    <li><b>max. EK</b> = mittlerer Verkaufspreis der letzten 3 Verkäufe − 5 % Tax − dein Mindestgewinn. Liegt dein Preis darüber, warnt die App.</li>
+    <li><b>✕</b> nimmt eine Karte ohne Nachkauf von der Liste.</li></ul>`],
+  ["Übersicht & Statistiken", `<ul><li>Oben den <b>Zeitraum</b> wählen: Heute, 7 Tage, 30 Tage, Gesamt.</li>
+    <li><b>Wochenziel</b> mit Fortschritt und Vergleich zur Vorwoche.</li>
+    <li><b>Ladenhüter:</b> Karten, die schon lange im Club liegen – direkt Preis anpassen oder verkaufen.</li>
+    <li><b>Was lohnt sich?</b> Gewinn pro Tag nach Preisklasse, Style, Rating und Wochentag – zeigt, womit deine Coins am schnellsten arbeiten.</li>
+    <li>Diagramme lassen sich antippen.</li></ul>`],
+  ["Vermögen", `<p>Einmal pro Woche unter <b>Vermögen</b> deinen Stand eintragen (Teamwert, Transferliste, Coins). Die App zeigt das Gesamtvermögen und die Veränderung zur Vorwoche.</p>`],
+  ["Mit einem Partner zusammen traden", `<p>Unter <b>Einstellungen → Team → Partner einladen</b> einen Code erzeugen und teilen. Dein Partner legt ein eigenes Konto an und tritt mit dem Code bei – ihr seht dann dieselben Daten in Echtzeit.</p>`],
+  ["Einstellungen", `<ul><li><b>Wochenziel</b>, <b>Mindestgewinn</b> (für den max. EK) und ab wann eine Karte als <b>Ladenhüter</b> gilt.</li>
+    <li><b>kalk. VK – Aufschläge:</b> wie viel du je Preisklasse auf den EK aufschlägst.</li>
+    <li><b>Backup</b> einmal pro Woche herunterladen; <b>CSV-Export</b> für Excel.</li></ul>`],
+  ["Als App auf dem Handy", `<ul><li><b>iPhone:</b> in Safari auf <b>Teilen</b> → <b>„Zum Home-Bildschirm“</b>.</li>
+    <li><b>Android:</b> in Chrome im Menü (⋮) → <b>„App installieren“</b> bzw. „Zum Startbildschirm hinzufügen“.</li></ul>
+    <p>Danach startet Denex Trading im Vollbild wie eine normale App.</p>`],
+];
+function openHelp() {
+  sheet("Anleitung", `<div class="form help">${HELP.map(([t, h], i) => `<details class="group" ${i ? "" : "open"}><summary>${t}</summary><div class="help-body">${h}</div></details>`).join("")}
+    <button class="secondary" data-tour-again>Einführung erneut zeigen</button></div>`);
+  layer.querySelector("[data-tour-again]").onclick = () => openTour();
 }
 
 function accountHtml(demo) {
@@ -678,7 +755,9 @@ function onViewClick(e) {
   if (act === "stale") openStale();
   if (act === "backup") downloadBackup();
   if (act === "snap") openSnap();
-  if (act === "import") openImport();
+  if (act === "help") openHelp();
+  if (act === "tour") openTour();
+  if (act === "add") openAdd();
   if (act === "export") download(`Denex-Trading-Export-${toISODate(new Date())}.csv`, exportCSV());
   if (act === "share") {
     const text = `Tritt meinem ${APP}-Depot bei – Code: ${account.profile?.depot?.invite}\n${location.origin}${location.pathname}`;
@@ -991,40 +1070,6 @@ function openRanking() {
 }
 
 // ---------- Import / Export ----------
-function openImport() {
-  const body = `<div class="form">
-    <p class="meta" style="white-space:normal;margin:0">Wähle eine Excel-Datei (.xlsx) oder CSV. Erkannt werden die Spalten Name, Rating, Chemistry Style, EK, EK Datum, VK und VK Datum (Reihenfolge egal, Kopfzeile nötig). <a href="#" id="imp-tpl">Vorlage herunterladen</a></p>
-    <label class="secondary" for="imp-file" style="text-align:center">Datei auswählen</label>
-    <input class="hidden" type="file" id="imp-file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-    <div id="imp-result"></div></div>`;
-  sheet("Excel importieren", body);
-  $("imp-tpl").onclick = e => { e.preventDefault(); download("Denex-Trading-Vorlage.csv", "Name;Rating;Chemistry Style;EK;EK Datum;VK;VK Datum;Notiz\nMustermann;84;Basic;1500;01.10.2026;2600;02.10.2026;Beispiel – Zeile löschen"); };
-  let parsed = null;
-  $("imp-file").onchange = async e => {
-    const file = e.target.files[0]; if (!file) return;
-    $("imp-result").innerHTML = '<div class="empty">Datei wird gelesen …</div>';
-    try {
-      const { readFile } = await import("./importer.js");
-      parsed = await readFile(file, settings.name);
-      const sold = parsed.cards.filter(isSold);
-      $("imp-result").innerHTML = parsed.cards.length ? `<div class="group"><div class="gh">Vorschau – ${esc(file.name)}${parsed.sheet ? " · " + esc(parsed.sheet) : ""}</div>
-        <div class="calc"><div class="l"><span>Spieler gesamt</span><span class="num">${parsed.cards.length}</span></div>
-        <div class="l"><span>Davon verkauft</span><span class="num">${sold.length}</span></div>
-        <div class="l"><span>Davon offen</span><span class="num">${parsed.cards.length - sold.length}</span></div>
-        <div class="total"><span>Gewinn (verkauft)</span>${profitHtml(sum(sold.map(c => profitOf(c.ek, c.vk))))}</div></div></div>
-        ${parsed.skipped.length ? `<div class="group"><div class="gh">${parsed.skipped.length} Zeilen übersprungen</div><div class="calc">${parsed.skipped.slice(0, 15).map(s => `<div class="l"><span>Zeile ${s.line}</span><span>${esc(s.reason)}</span></div>`).join("")}</div></div>` : ""}
-        <button class="primary" id="imp-go">${parsed.cards.length} Spieler importieren</button>
-        <p class="hint">Ein erneuter Import derselben Datei überschreibt die Einträge, statt sie zu verdoppeln.</p>`
-        : '<div class="err">In der Datei wurden keine Spieler gefunden. Nötig sind mindestens die Spalten Name und EK.</div>';
-      if ($("imp-go")) $("imp-go").onclick = async () => {
-        $("imp-go").disabled = true; $("imp-go").textContent = "Wird importiert …";
-        // Einkaufslisten-Status bereits vorhandener Karten beim erneuten Import behalten
-        const prev = new Map(S.data.cards.map(c => [c.id, c]));
-        await S.saveCards(parsed.cards.map(c => prev.get(c.id)?.restock ? { ...c, restock: prev.get(c.id).restock } : c)); closeSheet(); toast(`${parsed.cards.length} Spieler importiert`);
-      };
-    } catch (err) { $("imp-result").innerHTML = `<div class="err">Import fehlgeschlagen: ${esc(err.message)}</div>`; }
-  };
-}
 function exportCSV() {
   const d = iso => iso ? fmtDate(parseDay(iso)).replace(/\.(\d\d)$/, ".20$1") : "";
   const lines = ["Name;Rating;Chemistry Style;EK;EK Datum;kalk. VK;VK;VK Datum;Tax;Gewinn;Marge %;Notiz"];
@@ -1169,6 +1214,7 @@ async function openApp(depot) {
   unsub = S.subscribe(() => { setTiers(savedTiers(), S.data.settings.markupAbove); render(); });
   await S.connect({ depot, demoSeed });
   render();
+  setTimeout(maybeTour, 400);
 }
 async function refreshProfile() {
   account.profile = await cloud.ensureProfile(account.user, pendingName);

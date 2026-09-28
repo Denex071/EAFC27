@@ -10,6 +10,8 @@ eigener Ordner, eigenes Firebase-Projekt, eigene Netlify-Seite. Änderungen hier
 | Teilen | alle mit dem Code | Partner per Einladungscode (max. 5 im Depot) |
 | kalk. VK | feste Aufschläge | pro Depot einstellbar |
 | Rechtliches | – | Impressum, Datenschutz, EA-Hinweis |
+| Excel-Import | ja | nein (Neustart ohne Altdaten) |
+| Hilfe | – | Einführung beim ersten Start, Anleitung unter Einstellungen, „Erste Schritte“ |
 
 ## Ordner
 - `app/` – die Web-App (wird veröffentlicht)
