@@ -79,6 +79,12 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 - Offene Karten lassen sich mit Angebotspreis als **gelistet** markieren (Bearbeiten → Transferliste, oder „Preis“ bei Ladenhütern).
 - Filter „Gelistet“ in der Spielerliste; beim Verkaufen ist der Angebotspreis vorbelegt.
 
+### Preisanpassung (Ladenhüter)
+- Offene Karten, die länger als **7 Tage** nicht verkauft sind, erscheinen in der Übersicht mit „Preis anpassen“.
+- **„Angepasst“** bestätigt die Anpassung (optional mit neuem Angebotspreis).
+- Ist die Karte **3 Tage** nach der Anpassung noch unverkauft, kommt sie nach dem Verkauf **nicht** auf die Einkaufsliste
+  („kein Nachkauf“). Bei Bedarf: verkaufte Karte antippen → „Auf die Einkaufsliste setzen“. Beide Fristen unter Einstellungen.
+
 ### Screenshot / Bildschirmvideo scannen (Symbol neben dem +)
 Die Erkennung läuft komplett auf dem Gerät. Die App erkennt selbst, ob es ein **Kauf** oder ein **Verkauf** ist:
 

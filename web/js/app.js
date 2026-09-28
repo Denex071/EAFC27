@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -108,7 +108,10 @@ const recentChems = () => [...new Set([...S.data.cards].sort((a, b) => (b.create
 // Jeder Verkauf landet auf der Liste, bis er nachgekauft ("done") oder übersprungen ("skip") ist.
 // Verkäufe aus dem Excel-Import zählen nicht (die sind längst erledigt).
 // Auf der Einkaufsliste: in der App verkaufte Karten ("open"); alte Verkäufe aus dem Excel-Import nicht
-const onRestock = c => isSold(c) && (c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-")));
+// Ladenhüter: nach bestätigter Preisanpassung noch lockDays Tage unverkauft → kein Nachkauf (außer von Hand „manual“)
+const slowSeller = c => !!c.adjustedAt && daysBetween(parseDay(c.adjustedAt), parseDay(c.vkDate || toISODate(new Date()))) >= cfg().lockDays;
+const onRestock = c => isSold(c) && (c.restock === "manual"
+  || ((c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-"))) && !slowSeller(c)));
 const restockOpen = () => S.data.cards.filter(onRestock);
 const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
 function restockGroups() {
@@ -316,16 +319,64 @@ function goalHtml() {
     ${vs ? `<div class="stat-line">${vs} · Vorwoche gesamt ${signed(w.prev)}</div>` : ""}</section>`;
 }
 
-// ---------- Ladenhüter ----------
+// ---------- Ladenhüter / Preisanpassung ----------
+/// Status einer offenen oder verkauften Karte: "due" (Anpassung fällig), "adjusted" (bestätigt, Frist läuft), "slow" (kein Nachkauf)
+function staleState(c) {
+  if (slowSeller(c)) return "slow";
+  if (!isSold(c) && c.adjustedAt) return "adjusted";
+  if (!isSold(c) && daysBetween(parseDay(c.ekDate), new Date()) >= cfg().staleDays) return "due";
+  return null;
+}
+const staleTag = c => ({ due: '<span class="tag alert">Preis anpassen</span>', slow: '<span class="tag alert">kein Nachkauf</span>',
+  adjusted: '<span class="tag listed">angepasst</span>' })[staleState(c)] || "";
+function staleRow(c, attrs = { adjust: "data-adjust", list: "data-listp", sell: "data-sell" }) {
+  const st = staleState(c), lock = cfg().lockDays;
+  const left = c.adjustedAt ? lock - daysBetween(parseDay(c.adjustedAt), new Date()) : 0;
+  const info = st === "due" ? `${heldSince(c.ekDate)} unverkauft – bitte Preis anpassen`
+    : st === "adjusted" ? `angepasst am ${fmtShort(parseDay(c.adjustedAt))} · noch ${left} T bis „kein Nachkauf“`
+    : `seit ${fmtShort(parseDay(c.adjustedAt))} angepasst, weiter unverkauft → wird nicht nachgekauft`;
+  return `<div class="row" style="align-items:flex-start">${badge(c.rating, 1)}<div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div>
+      <div class="meta">EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.listPrice ? ` · gelistet ${fmt(c.listPrice)}` : ""}</div>
+      <div class="stat-line" style="${st === "due" || st === "slow" ? "color:var(--warn)" : ""}">${info}</div></div>
+    <div style="display:flex;flex-direction:column;gap:6px">${st === "due" ? `<button class="mini gold" ${attrs.adjust}="${c.id}">Angepasst</button>`
+      : `<button class="mini" ${attrs.list}="${c.id}">Preis</button>`}<button class="mini" ${attrs.sell}="${c.id}">VK</button></div></div>`;
+}
 function staleHtml() {
-  const days = cfg().staleDays, list = I.staleCards(S.data.cards, days);
+  const { staleDays, lockDays } = cfg(), list = I.staleCards(S.data.cards, staleDays);
   if (!list.length) return "";
-  return `<section class="card"><div class="head"><h2>Ladenhüter</h2><span class="tag alert">${list.length} ≥ ${days} Tage</span></div>
-    <div class="stat-line"><b>${fmt(sum(list.map(c => c.ek)))}</b> Coins gebunden · Break-even gesamt ${fmt(sum(list.map(c => breakEven(c.ek))))}</div>
-    ${list.slice(0, 5).map(c => `<div class="row">${badge(c.rating, 1)}<div class="grow"><div class="name">${esc(c.name)}${c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}</div>
-      <div class="meta">${heldSince(c.ekDate)} · EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}</div></div>
-      <button class="mini" data-listp="${c.id}">Preis</button><button class="mini gold" data-sell="${c.id}">VK</button></div>`).join("")}
-    ${list.length > 5 ? `<button class="mini" data-act="stale" style="align-self:flex-start">Alle ${list.length} anzeigen</button>` : ""}</section>`;
+  const due = list.filter(c => staleState(c) === "due").length, slow = list.filter(c => staleState(c) === "slow").length;
+  return `<section class="card"><div class="head"><h2>Ladenhüter</h2><span class="tag alert">${list.length} ≥ ${staleDays} Tage</span></div>
+    <div class="stat-line"><b>${fmt(sum(list.map(c => c.ek)))}</b> Coins gebunden${due ? ` · <b>${due}</b> brauchen eine Preisanpassung` : ""}${slow ? ` · ${slow} ohne Nachkauf` : ""}</div>
+    ${list.slice(0, 5).map(c => staleRow(c)).join('<div class="divider"></div>')}
+    ${list.length > 5 ? `<button class="mini" data-act="stale" style="align-self:flex-start">Alle ${list.length} anzeigen</button>` : ""}
+    <p class="hint" style="padding:0">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${lockDays} Tage danach noch nicht verkauft, kommt sie nach dem Verkauf nicht auf die Einkaufsliste.</p></section>`;
+}
+
+/// Preisanpassung bestätigen (optional mit neuem Angebotspreis)
+function openAdjust(card) {
+  const step = priceStep, start = card.listPrice || target(card.ek);
+  const body = `<div class="form">
+    <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
+      <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · ${heldSince(card.ekDate)} im Club</div></div></div></div>
+    <div class="group"><div class="gh">Neuer Angebotspreis (optional)</div>
+      <div class="field"><label for="a-p">Angebot</label><input id="a-p" inputmode="decimal" value="${start}"></div>
+      <div class="chips"><button type="button" class="chip" data-ap="-1">− Stufe</button><button type="button" class="chip" data-ap="-2">− 2 Stufen</button>
+        <button type="button" class="chip" data-av="${breakEven(card.ek)}">Break-even ${compact(breakEven(card.ek))}</button></div>
+      <div id="a-calc"></div></div>
+    <p class="hint">Mit „Bestätigen“ wird die Preisanpassung vermerkt. Ist ${esc(card.name)} ${cfg().lockDays} Tage danach noch nicht verkauft, kommt die Karte nach dem Verkauf <b>nicht</b> auf die Einkaufsliste.</p></div>`;
+  const refresh = sheet("Preisanpassung", body, "Bestätigen", () => {
+    const price = parseCoins($("a-p").value), today = toISODate(new Date());
+    S.saveCard({ ...card, adjustedAt: card.adjustedAt || today, ...(price ? { listPrice: price, listDate: today } : {}) });
+    closeSheet(); toast(`Preisanpassung für ${card.name} bestätigt`);
+  }, () => true);
+  const upd = () => { $("a-calc").innerHTML = calcHtml(card.ek, parseCoins($("a-p").value)); refresh(); };
+  layer.querySelector(".sheet").addEventListener("click", e => {
+    const d = e.target.closest("[data-ap]"), v = e.target.closest("[data-av]");
+    if (d) { let p = parseCoins($("a-p").value) || start; for (let k = 0; k < -d.dataset.ap; k++) p = Math.max(150, p - step(p - 1)); $("a-p").value = p; upd(); }
+    if (v) { $("a-p").value = v.dataset.av; upd(); }
+  });
+  $("a-p").addEventListener("input", upd);
+  upd();
 }
 
 // ---------- Gewinnverlauf ----------
@@ -462,7 +513,7 @@ function listHtml() {
     <div class="list">${shown.map(c => {
       const p = isSold(c) ? profitOf(c.ek, c.vk) : null;
       return `<div class="item" tabindex="0" data-edit="${c.id}">${badge(c.rating)}
-        <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${!isSold(c) && c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
+        <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${!isSold(c) && c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}${staleTag(c)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
         <div class="right">${p != null ? `${profitHtml(p)}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div>`
           : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">kalk. VK ${compact(target(c.ek))} · ${heldSince(c.ekDate)}</div>`}</div>
         ${p == null ? `<button class="mini gold" data-sell="${c.id}">VK</button>` : ""}</div>`;
@@ -618,7 +669,8 @@ function moreHtml() {
       <div class="group" style="border:0">
         <div class="field"><label for="c-goal">Wochenziel Gewinn</label><input id="c-goal" data-cfg="weeklyGoal" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="aus"></div>
         <div class="field"><label for="c-min">Mindestgewinn pro Karte</label><input id="c-min" data-cfg="minProfit" inputmode="decimal" value="${cfg().minProfit}"></div>
-        <div class="field"><label for="c-stale">Ladenhüter ab Tagen</label><input id="c-stale" data-cfg="staleDays" inputmode="numeric" value="${cfg().staleDays}"></div></div>
+        <div class="field"><label for="c-stale">Preisanpassung nach Tagen</label><input id="c-stale" data-cfg="staleDays" inputmode="numeric" value="${cfg().staleDays}"></div>
+        <div class="field"><label for="c-lock">Kein Nachkauf, wenn danach noch Tage unverkauft</label><input id="c-lock" data-cfg="lockDays" inputmode="numeric" value="${cfg().lockDays}"></div></div>
       <p class="hint" style="padding:0">Der Mindestgewinn bestimmt den „max. EK“ auf der Einkaufsliste.</p></section>
     <section class="card"><h2>Daten</h2>
       <button class="secondary" data-act="backup">Backup herunterladen (alles)</button>
@@ -670,6 +722,7 @@ function onViewClick(e) {
   const d = t.closest("[data-day]"); if (d) { ui.sel = +d.dataset.day; return render(); }
   const wk = t.closest("[data-week]"); if (wk) { ui.wsel = +wk.dataset.week; return render(); }
   const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("fct-dim", ui.dim); return render(); }
+  const adj = t.closest("[data-adjust]"); if (adj) { e.stopPropagation(); return openAdjust(S.data.cards.find(c => c.id === adj.dataset.adjust)); }
   const lp = t.closest("[data-listp]"); if (lp) { e.stopPropagation(); return openList(S.data.cards.find(c => c.id === lp.dataset.listp)); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
@@ -708,7 +761,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "m-name") { settings.name = e.target.value.trim(); LS.set("fct-name", settings.name); toast("Name gespeichert"); }
   if (e.target.dataset.cfg) {
     const k = e.target.dataset.cfg, v = Math.max(0, parseCoins(e.target.value) || 0);
-    S.saveSettings({ [k]: k === "staleDays" ? Math.max(1, v || I.DEFAULTS.staleDays) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
+    S.saveSettings({ [k]: k === "staleDays" || k === "lockDays" ? Math.max(1, v || I.DEFAULTS[k]) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
     toast("Gespeichert");
   }
   if (e.target.id === "restore-file" && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ""; restoreBackup(f); }
@@ -791,7 +844,7 @@ function openAdd(existing) {
     if (t.dataset.app) { $("f-ek").value += t.dataset.app; $("f-ek").focus(); }
     if (t.id === "f-next") { save(); toast("Gespeichert – nächste Karte"); ["f-name", "f-rating", "f-ek", "f-notes"].forEach(i => $(i).value = ""); $("f-name").focus(); }
     if (t.id === "f-list") return openList(existing);
-    if (t.id === "f-restock") { S.saveCard({ ...existing, restock: "open" }); closeSheet(); return toast(`${existing.name} steht auf der Einkaufsliste`); }
+    if (t.id === "f-restock") { S.saveCard({ ...existing, restock: "manual" }); closeSheet(); return toast(`${existing.name} steht auf der Einkaufsliste`); }
     if (t.id === "f-del") return confirmButton(t, "Wirklich löschen?", () => { S.deleteCard(existing.id); closeSheet(); toast("Gelöscht"); });
     update();
   });
@@ -815,7 +868,8 @@ function openSell(card, presetPrice = card.listPrice) {
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
     S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), restock: "open", listPrice: null, listDate: null });
-    closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)));
+    const date = $("s-date").value || toISODate(new Date());
+    closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)) + (slowSeller({ ...card, vkDate: date }) ? " · Ladenhüter, kein Nachkauf" : ""));
   }, () => parseCoins($("s-vk").value) > 0);
   const upd = () => { $("s-calc").innerHTML = calcHtml(card.ek, parseCoins($("s-vk").value)) || '<div class="calc"><div class="l">Preis eingeben</div></div>'; refresh(); };
   layer.querySelector(".sheet").addEventListener("click", e => {
@@ -895,12 +949,10 @@ function openGoal() {
 
 function openStale() {
   const list = I.staleCards(S.data.cards, cfg().staleDays);
-  sheet(`Ladenhüter (${list.length})`, `<div class="form"><div class="list">${list.map(c => `<div class="item" style="cursor:default">${badge(c.rating, 1)}
-    <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}</div>
-    <div class="meta">${heldSince(c.ekDate)} · EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}</div></div>
-    <button class="mini" data-slist="${c.id}">Preis</button><button class="mini gold" data-ssell="${c.id}">VK</button></div>`).join("")}</div></div>`);
+  sheet(`Ladenhüter (${list.length})`, `<div class="form"><div class="card">${list.map(c => staleRow(c, { adjust: "data-sadj", list: "data-slist", sell: "data-ssell" })).join('<div class="divider"></div>')}</div></div>`);
   layer.querySelector(".sheet").addEventListener("click", e => {
-    const l = e.target.closest("[data-slist]"), v = e.target.closest("[data-ssell]");
+    const a = e.target.closest("[data-sadj]"), l = e.target.closest("[data-slist]"), v = e.target.closest("[data-ssell]");
+    if (a) openAdjust(S.data.cards.find(c => c.id === a.dataset.sadj));
     if (l) openList(S.data.cards.find(c => c.id === l.dataset.slist));
     if (v) openSell(S.data.cards.find(c => c.id === v.dataset.ssell));
   });

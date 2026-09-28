@@ -8,7 +8,9 @@ const sum = a => a.reduce((x, y) => x + y, 0);
 const hold = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate));
 const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); };
 
-export const DEFAULTS = { weeklyGoal: 0, minProfit: 300, staleDays: 3 };
+// staleDays: ab wann eine Karte eine Preisanpassung braucht; lockDays: so viele Tage nach bestätigter Anpassung
+// noch unverkauft → nach dem Verkauf kein Nachkauf
+export const DEFAULTS = { weeklyGoal: 0, minProfit: 300, staleDays: 7, lockDays: 3 };
 
 // ---------- Nachkauf-Bewertung ----------
 
