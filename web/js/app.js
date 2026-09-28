@@ -6,7 +6,7 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.1.2";
+const VERSION = "1.1.3";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -657,7 +657,7 @@ const hideProgress = () => document.getElementById("progress")?.remove();
 
 async function runScan(files) {
   files = [...files];
-  scanTitle = files.some(f => f.type.startsWith("video")) ? "Video wird ausgewertet" : files.length > 1 ? "Screenshots werden ausgewertet" : "Screenshot wird ausgewertet";
+  scanTitle = files.some(f => f.type.startsWith("video") || /\.(mov|mp4|m4v|webm)$/i.test(f.name || "")) ? "Video wird ausgewertet" : files.length > 1 ? "Screenshots werden ausgewertet" : "Screenshot wird ausgewertet";
   progress("Wird vorbereitet …", 0);
   try {
     const { scanFiles } = await import("./ocr.js");

@@ -100,7 +100,13 @@ const difference = (a, b) => { let m = 0; for (let i = 0; i < a.length; i++) m =
 
 const seek = (v, t) => new Promise(ok => {
   const timer = setTimeout(ok, 3000); // iOS meldet „seeked“ nicht immer
-  v.onseeked = () => { clearTimeout(timer); ok(); };
+  v.onseeked = () => {
+    clearTimeout(timer);
+    // Warten, bis das neue Bild wirklich dargestellt ist (sonst liest iOS teils noch das alte)
+    if (!v.requestVideoFrameCallback) return ok();
+    const t2 = setTimeout(ok, 200);
+    v.requestVideoFrameCallback(() => { clearTimeout(t2); ok(); });
+  };
   v.currentTime = t;
 });
 
@@ -108,18 +114,22 @@ const seek = (v, t) => new Promise(ok => {
 /// Jedes Bild wird sofort an `use(canvas, nr, anteil)` übergeben und danach verworfen.
 async function eachVideoFrame(file, use, onStep) {
   const url = URL.createObjectURL(file);
+  // Nicht ins Dokument hängen: iOS lädt unsichtbare Videos im Dokument oft gar nicht.
   const v = document.createElement("video");
-  v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
-  // iOS dekodiert Einzelbilder zuverlässiger, wenn das Video im Dokument hängt
-  v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none";
-  document.body.appendChild(v);
+  v.muted = v.defaultMuted = true; v.playsInline = true; v.preload = "auto";
+  v.setAttribute("muted", ""); v.setAttribute("playsinline", "");
+  v.src = url;
   onStep(0, 0);
   try {
     await new Promise((ok, fail) => {
-      const err = () => { clearTimeout(timer); fail(new Error("Video kann nicht gelesen werden")); };
-      const timer = setTimeout(err, 20000);
-      v.onloadeddata = () => { clearTimeout(timer); ok(); };
-      v.onerror = err;
+      let done = false;
+      const finish = e => { if (done) return; done = true; clearTimeout(timer); e ? fail(e) : ok(); };
+      const timer = setTimeout(() => finish(new Error("Video lädt nicht – bitte als Screenshot versuchen")), 30000);
+      v.onloadeddata = v.oncanplay = () => finish();
+      // iOS lädt Bilddaten teils erst beim Abspielen
+      v.onloadedmetadata = () => { v.play().then(() => v.pause()).catch(() => {}); };
+      v.onerror = () => finish(new Error("Dieses Videoformat kann der Browser nicht lesen"));
+      v.load();
     });
     try { await v.play(); v.pause(); } catch (e) { /* iOS: Wiedergabe nicht nötig */ }
     const duration = isFinite(v.duration) ? v.duration : 0;
@@ -148,7 +158,7 @@ async function eachVideoFrame(file, use, onStep) {
     }
     if (!kept) throw new Error("Im Video wurden keine Bilder gefunden");
   } finally {
-    v.removeAttribute("src"); v.load(); v.remove();
+    v.pause(); v.removeAttribute("src"); v.load();
     URL.revokeObjectURL(url);
   }
 }
@@ -176,7 +186,7 @@ export async function scanFiles(files, knownNames, learnedIcons, onProgress = ()
   onProgress("Texterkennung wird geladen …", 0);
   await getWorker();
   files = [...files];
-  const isVideo = f => f.type.startsWith("video");
+  const isVideo = f => f.type.startsWith("video") || /\.(mov|mp4|m4v|webm)$/i.test(f.name || "");
   // Ein Video = Einzelbilder derselben Szene zusammenführen
   if (files.length === 1 && isVideo(files[0])) return scanVideo(files[0], knownNames, learned, onProgress);
   // Mehrere Dateien = jede für sich (mehrere Karten)
