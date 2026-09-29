@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.8.1";
+const VERSION = "1.8.2";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {

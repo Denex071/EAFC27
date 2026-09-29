@@ -40,7 +40,7 @@ main{flex:1;padding:14px 16px 96px;display:flex;flex-direction:column;gap:14px}
 .profit{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .profit.pos{color:var(--good)} .profit.neg{color:var(--bad)}
 .row{display:flex;align-items:center;gap:10px;min-width:0}
-.row .grow{flex:1;min-width:0}
+.row .grow,.item .grow{flex:1;min-width:0}
 .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meta{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .right{text-align:right;flex:none}
