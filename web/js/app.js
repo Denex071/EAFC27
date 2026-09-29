@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.8.0";
+const VERSION = "1.8.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -178,6 +178,13 @@ const addedAt = g => g.wish ? g.wish.createdAt || 0 : g.since;
 function sortedBuyGroups() {
   const gs = allBuyGroups(); gs.forEach(g => { g.turn = turnover(g.name, g.rating); });
   return gs.sort((a, b) => turnRank(a.turn) - turnRank(b.turn) || b.turn.n - a.turn.n || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
+}
+/// „TL“: Karte (Spieler + Rating) ist noch aktiv, also gekauft und nicht verkauft → nicht doppelt kaufen
+function tlTag(g) {
+  const act = S.data.cards.filter(c => !isSold(c) && sameName(c.name, g.name) && (!g.rating || c.rating === +g.rating));
+  if (!act.length) return "";
+  const info = act.map(c => `${c.chem}, EK ${fmt(c.ek)}`).join(" · ");
+  return `<span class="tag tl" title="Noch aktiv: ${esc(info)}">TL${act.length > 1 ? " ×" + act.length : ""}</span>`;
 }
 const turnText = t => t.n >= 2 ? `<b>${t.n}× gedreht</b> in 7 Tagen` : t.n === 1 ? `1× gedreht in 7 Tagen (Tag ${t.day})`
   : t.known ? "in 7 Tagen nicht gedreht" : "<b>neuer Spieler</b> – noch nie gekauft";
@@ -655,7 +662,7 @@ function buyHtml() {
   const freeSlots = replaceSlots().length, usedSlots = sum(planned.map(g => g.replaces.length));
   const row = g => `<div class="item" style="cursor:default">
       ${badge(g.rating)}
-      <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}</div>
+      <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}${tlTag(g)}</div>
         <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · ${g.planned ? "geplanter " : ""}EK ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${compact(g.offer)}` : ""} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
         <div class="stat-line">${turnText(g.turn)}</div>
         ${g.wish?.offer ? `<div class="stat-line">Angebot ~<b>${fmt(g.wish.offer)}</b> · Gewinn ${signed(profitOf(g.lastEk, g.wish.offer))}</div>` : ""}
@@ -676,6 +683,7 @@ function buyHtml() {
       dann Karten mit 1 Drehung in Tag 4–7, ganz unten Karten ohne Drehung in 7 Tagen. Bei Gleichstand steht der ältere Eintrag oben.
       Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch geplante Spieler („geplant“) ersetzt – der älteste Plan zuerst.
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
+      <b>TL</b> = diese Karte habt ihr noch aktiv (gekauft, nicht verkauft) – Vorsicht vor Doppelkäufen.
       „Gekauft“ speichert den Kauf, geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
       max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
 }
