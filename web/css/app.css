@@ -146,3 +146,13 @@ nav.tabs .ico{position:relative;display:inline-flex}
 html{touch-action:pan-x pan-y;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 *{touch-action:pan-x pan-y}
 input,select,textarea{font-size:16px !important}
+/* Prüffenster Spieler-Upload (kompakt) */
+.ws-row{padding:6px 10px}
+.ws-line{display:flex;align-items:center;gap:8px;padding:4px 0}
+.ws-line input,.ws-line select{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0;color:inherit}
+.ws-line input[type=checkbox]{width:22px;height:22px;accent-color:var(--gold);flex:none;padding:0}
+.ws-name{flex:1;font-weight:700}
+.ws-rat{width:52px;text-align:center}
+.ws-line select{flex:1}
+.ws-price{width:84px;text-align:right}
+.ws-row .warn{padding:2px 0 4px}

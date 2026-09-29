@@ -67,7 +67,13 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
 - Zwei Bereiche: **Nachkauf** (verkaufte Karten, Vorrang) und **Ersatzspieler** (von Hand geplant).
 - **„+ Ersatzspieler planen“**: Name, Rating, Chemistry Style, Preis (EK), voraussichtlicher Angebotspreis, Anzahl
   (`depots/{Code}/wishes`). Ladenhüter ohne Nachkauf werden der Reihe nach durch geplante Ersatzspieler ersetzt.
-- Der voraussichtliche Angebotspreis wird beim Kauf übernommen und beim Listen/Verkaufen vorbelegt.
+- Der voraussichtliche Angebotspreis wird beim Kauf übernommen und beim Verkaufen vorbelegt.
+- **Einkaufsliste oder Merkliste**: beim Hinzufügen wählbar. Die Merkliste ist nur zum Beobachten (zählt nicht zur Einkaufsliste);
+  „→ Einkaufsliste“ verschiebt einen Spieler.
+- **Screenshot hochladen** (Tab Einkauf): liest Spieler aus Listen (Zeilen mit grünem „+“, Name(Position), Rating-Abzeichen, Preis)
+  oder aus einer Einzelkarte mit Preis. Ratings der Abzeichen per Mustervergleich (`web/js/digit-templates.js`).
+  Vor dem Speichern Prüffenster mit Wahl Einkaufsliste/Merkliste.
+- Steht ein Spieler schon auf einer Liste, fragt die App vor dem erneuten Hinzufügen nach (Ja/Nein).
 - Käufe über **+** oder **per Screenshot** haken passende Einträge (gleicher Spieler & Rating) automatisch ab.
 - Alte Verkäufe aus dem Excel-Import erscheinen nicht auf der Liste – importierte Karten, die ihr in der App verkauft, schon.
 - Im Bearbeiten-Fenster einer verkauften Karte: **„Auf die Einkaufsliste setzen“**, falls eine Karte fehlt.

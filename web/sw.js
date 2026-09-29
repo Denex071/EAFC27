@@ -1,8 +1,8 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Firebase/Schriften aus dem Netz.
-const VERSION = "fctrader-v1.6.0";
+const VERSION = "fctrader-v1.7.0";
 const SHELL = ["./", "index.html", "css/app.css", "config.js", "manifest.webmanifest",
   "js/app.js", "js/calc.js", "js/store.js", "js/parser.js", "js/ocr-lines.js", "js/chemicons.js", "js/chem-templates.js",
-  "js/importer.js", "js/ocr.js", "js/insights.js", "vendor/firebase.js", "icons/icon-192.png", "icons/apple-touch-icon.png"];
+  "js/importer.js", "js/ocr.js", "js/insights.js", "js/wishscan.js", "js/digit-templates.js", "vendor/firebase.js", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -3,6 +3,8 @@
 import { mergeWords, buildLines } from "./ocr-lines.js";
 import { parseFrames } from "./parser.js";
 import { grayscale, detailBox, listBox, extract, match, fromHex } from "./chemicons.js";
+import { findRows, findBadge, binaryCrop, rowBoxes, PRED, parseRating, parseCard, listItems, badgeDigits, classifyRating } from "./wishscan.js";
+import { DIGITS } from "./digit-templates.js";
 
 let workerPromise = null;
 let progressFn = () => {};
@@ -205,4 +207,62 @@ export async function scanFiles(files, knownNames, learnedIcons, onProgress = ()
   const votes = parts.map(p => p.kind).filter(k => k !== "unknown");
   const kind = votes.length ? (votes.filter(k => k === "sale").length > votes.length / 2 ? "sale" : "purchase") : "unknown";
   return { kind, items: parts.flatMap(p => p.items), tokens: parts.flatMap(p => p.tokens) };
+}
+
+// ---------- Spieler für Einkaufs-/Merkliste aus Screenshots ----------
+
+async function readCrop(worker, canvas, psm, whitelist = "") {
+  await worker.setParameters({ tessedit_pageseg_mode: psm, tessedit_char_whitelist: whitelist });
+  const { data } = await worker.recognize(canvas);
+  release(canvas);
+  return data.text.trim();
+}
+
+/// Liefert [{ name, rating, price }] aus Listen-Screenshots (Zeilen mit grünem „+“) oder Einzelkarten.
+export async function scanWishFiles(files, onProgress = () => {}) {
+  onProgress("Texterkennung wird geladen …", 0);
+  const worker = await getWorker();
+  const items = [];
+  try {
+    for (let f = 0; f < files.length; f++) {
+      const bmp = await createImageBitmap(files[f]);
+      const canvas = canvasFrom(bmp, bmp.width, bmp.height); bmp.close?.();
+      const W = canvas.width, H = canvas.height;
+      const d = canvas.getContext("2d").getImageData(0, 0, W, H).data;
+      const rows = findRows(d, W, H);
+      const label = files.length > 1 ? `Bild ${f + 1} von ${files.length}: ` : "";
+      if (rows.length >= 2) {
+        // Liste: ganzes Bild vergrößert lesen (Name, Preis) – Zeilen über die grünen Knöpfe zuordnen, Rating aus dem Abzeichen
+        const k = Math.max(1, Math.min(5, 2300 / W));
+        const big = document.createElement("canvas"); big.width = Math.round(W * k); big.height = Math.round(H * k);
+        const bc = big.getContext("2d"); bc.imageSmoothingQuality = "high"; bc.drawImage(canvas, 0, 0, big.width, big.height);
+        await worker.setParameters({ tessedit_pageseg_mode: "11", tessedit_char_whitelist: "" });
+        progressFn = p => onProgress(`${label}Liste wird gelesen …`, (f + p * 0.8) / files.length);
+        onProgress(`${label}Liste wird gelesen …`, f / files.length);
+        const { lines } = await analyseCanvas(big, {}, [false, true]);
+        release(big);
+        const ratings = [], names = [];
+        for (let r = 0; r < rows.length; r++) {
+          onProgress(`${label}Spieler ${r + 1} von ${rows.length} …`, (f + 0.8 + 0.2 * r / rows.length) / files.length);
+          const badge = findBadge(d, W, H, rows[r]), box = rowBoxes(W, H, rows[r], badge);
+          // Rating: erst Mustervergleich der Ziffern, sonst Texterkennung
+          ratings.push(!badge ? null : classifyRating(badgeDigits(d, W, badge), DIGITS)
+            ?? parseRating(await readCrop(worker, binaryCrop(d, W, box.badge, PRED.digits, 4), "6", "0123456789")));
+          names.push(await readCrop(worker, binaryCrop(d, W, box.name, "auto", 4), "7"));
+        }
+        items.push(...listItems(lines, rows, ratings, W, H, names));
+      } else {
+        // Einzelkarte: ganzes Bild lesen
+        await worker.setParameters({ tessedit_pageseg_mode: "11", tessedit_char_whitelist: "" });
+        progressFn = p => onProgress(`${label}Bild wird gelesen …`, (f + p) / files.length);
+        onProgress(`${label}Bild wird gelesen …`, f / files.length);
+        const { lines } = await analyseCanvas(canvas, {});
+        items.push(...parseCard(lines));
+      }
+      release(canvas);
+    }
+  } finally {
+    await worker.setParameters({ tessedit_pageseg_mode: "11", tessedit_char_whitelist: "" }); // für die normalen Scans zurücksetzen
+  }
+  return items;
 }

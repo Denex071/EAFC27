@@ -4,10 +4,10 @@ import * as S from "./store.js";
 import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, signed, compact, pct, parseCoins,
   DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, priceStep } from "./calc.js";
 import * as I from "./insights.js";
-import { nameKey, similarKeys } from "./parser.js";
+import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -127,7 +127,27 @@ function restockGroups() {
   }).sort((a, b) => b.soldOn.localeCompare(a.soldOn) || a.name.localeCompare(b.name));
 }
 /// Von Hand geplante Käufe als Gruppen (oben auf der Einkaufsliste)
-const sortedWishes = () => [...S.data.wishes].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+const isWatch = w => w.list === "watch"; // Merkliste: nur gemerkt, zählt nicht zur Einkaufsliste
+const sortedWishes = () => S.data.wishes.filter(w => !isWatch(w)).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+const watchList = () => S.data.wishes.filter(isWatch).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+/// Auf welchen Listen steht der Spieler schon? → ["Einkaufsliste", "Merkliste"]
+function listsWith(name, rating, exceptId) {
+  const same = x => x.id !== exceptId && sameName(x.name, name) && (!rating || !x.rating || +x.rating === +rating);
+  const out = [];
+  if (restockGroups().some(g => sameName(g.name, name) && (!rating || g.rating === +rating)) || sortedWishes().some(same)) out.push("Einkaufsliste");
+  if (watchList().some(same)) out.push("Merkliste");
+  return out;
+}
+/// Kurze Rückfrage (Ja/Nein) – liegt über offenen Fenstern
+function askYesNo(text, yes = "Ja", no = "Nein") {
+  return new Promise(done => {
+    const el = document.createElement("div"); el.className = "progress"; el.style.zIndex = 70;
+    el.innerHTML = `<div class="box" role="alertdialog" aria-modal="true"><strong>Schon auf der Liste</strong><span style="white-space:normal">${text}</span>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="mini" data-a="0">${no}</button><button class="mini gold" data-a="1">${yes}</button></div></div>`;
+    el.onclick = e => { const b = e.target.closest("[data-a]"); if (!b) return; el.remove(); done(b.dataset.a === "1"); };
+    document.body.appendChild(el); el.querySelector('[data-a="1"]').focus();
+  });
+}
 /// Freie Plätze: verkaufte Ladenhüter, die nicht nachgekauft werden – dort rücken die geplanten Spieler (Ersatz) nach.
 const replaceSlots = () => S.data.cards.filter(c => isSold(c) && slowSeller(c) && !onRestock(c) && !["done", "skip", "replaced"].includes(c.restock))
   .sort((a, b) => a.vkDate.localeCompare(b.vkDate));
@@ -141,7 +161,7 @@ const wishGroups = () => { const slots = wishSlots(); return sortedWishes().map(
   key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, lastEk: w.price, lastVk: null, soldOn: null,
   items: Array(w.qty || 1).fill(w), replaces: slots.get(w.id) || [] })); };
 const allBuyGroups = () => [...restockGroups(), ...wishGroups()]; // Nachkauf verkaufter Karten hat Vorrang
-const openBuyCount = () => restockOpen().length + sum(S.data.wishes.map(w => w.qty || 1));
+const openBuyCount = () => restockOpen().length + sum(sortedWishes().map(w => w.qty || 1));
 /// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen; ersetzte Ladenhüter sind damit erledigt
 function useWish(w, n = 1) {
   (wishSlots().get(w.id) || []).slice(0, n).forEach(c => S.saveCard({ ...c, restock: "replaced" }));
@@ -154,7 +174,7 @@ function consumeRestock(card) {
     .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem) || a.vkDate.localeCompare(b.vkDate))[0];
   if (match) { S.saveCard({ ...match, restock: "done" }); return true; }
   // sonst einen von Hand geplanten Kauf (gleicher Spieler & Rating) abhaken
-  const wish = S.data.wishes.filter(w => sameName(w.name, card.name) && w.rating === card.rating)
+  const wish = sortedWishes().filter(w => sameName(w.name, card.name) && w.rating === card.rating)
     .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem))[0];
   if (wish) useWish(wish);
   return !!wish;
@@ -252,6 +272,10 @@ function renderShell() {
   input.onchange = () => { const files = [...input.files]; input.value = ""; if (files.length) runScan(files); };
   input.onclick = () => import("./ocr.js").then(m => m.warmUp());
   document.getElementById("view").addEventListener("click", onViewClick);
+  document.getElementById("view").addEventListener("change", e => {
+    if (e.target.id !== "wishScanInput") return;
+    const files = [...e.target.files]; e.target.value = ""; if (files.length) runWishScan(files);
+  });
   document.getElementById("view").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.matches(".item[tabindex]")) e.target.click(); });
 }
 
@@ -560,10 +584,19 @@ function bindListInputs() {
 
 function buyHtml() {
   const groups = allBuyGroups(), restock = groups.filter(g => !g.wish), planned = groups.filter(g => g.wish);
-  const addBtn = '<button class="secondary" data-act="wish">+ Ersatzspieler planen</button>';
-  if (!groups.length && !replaceSlots().length) return `<section class="card"><h2>Alles nachgekauft</h2>
+  const addBtn = `<div style="display:flex;gap:8px"><button class="secondary" data-act="wish" style="flex:1">+ Spieler hinzufügen</button>
+    <label class="secondary" for="wishScanInput" style="flex:1;text-align:center">Screenshot hochladen</label></div>
+    <input class="hidden" type="file" id="wishScanInput" accept="image/*" multiple>`;
+  const watch = watchList();
+  const watchHtml = `<section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Merkliste</h2><span class="hint">${watch.length ? watch.length + " gemerkt" : "zum Beobachten"}</span></div>
+      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${watch.map(w => `<div class="item" style="cursor:default">${badge(w.rating)}
+        <div class="grow" style="min-width:0;cursor:pointer" data-wish="${esc(w.id)}"><div class="name">${esc(w.name)}</div>
+          <div class="meta">${esc(w.chem)}${w.price ? ` · Preis ${fmt(w.price)}` : ""}${w.offer ? ` · Angebot ~${fmt(w.offer)}` : ""}</div></div>
+        <div class="right" style="display:flex;gap:6px"><button class="mini" data-wdel="${esc(w.id)}" aria-label="Löschen" title="Löschen">✕</button>
+          <button class="mini gold" data-tobuy="${esc(w.id)}">→ Einkaufsliste</button></div></div>`).join("") || '<div class="empty">Noch nichts gemerkt.</div>'}</div></section>`;
+  if (!groups.length && !replaceSlots().length && !watch.length) return `<section class="card"><h2>Alles nachgekauft</h2>
     <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.
-      Spieler, die ihr noch kaufen wollt, könnt ihr auch selbst hinzufügen.</p></section>${addBtn}`;
+      Spieler, die ihr noch kaufen wollt, könnt ihr auch selbst hinzufügen.</p></section>${addBtn}${watchHtml}`;
   const { minProfit } = cfg();
   groups.forEach(g => { g.st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, minProfit); });
   const count = sum(restock.map(g => g.items.length)), pcount = sum(planned.map(g => g.items.length));
@@ -588,15 +621,19 @@ function buyHtml() {
       ${freeSlots > usedSlots ? `<div class="warn" style="padding:0 14px 10px">${freeSlots - usedSlots} Ladenhüter ohne Ersatz – plane weitere Spieler.</div>` : ""}
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${planned.map(row).join("") || '<div class="empty">Noch keine Ersatzspieler geplant.</div>'}</div></section>
     ${addBtn}
+    ${watchHtml}
     <p class="hint">Verkaufte Karten werden zuerst nachgekauft. Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch deine geplanten Ersatzspieler ersetzt – der älteste Plan zuerst.
+      Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       „Gekauft“ speichert den Kauf, geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
       max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
 }
 
 /// Spieler von Hand auf die Einkaufsliste setzen bzw. bearbeiten
 function openWish(existing) {
-  const w = existing || { name: "", rating: "", chem: "Basic", price: "", offer: "", qty: 1 };
+  const w = existing || { name: "", rating: "", chem: "Basic", price: "", offer: "", qty: 1, list: "buy" };
+  let list = w.list || "buy";
   const body = `<form class="form" id="wf" autocomplete="off">
+    <div id="w-list">${seg([["buy", "Einkaufsliste"], ["watch", "Merkliste"]], list, "wl")}</div>
     <div class="group">
       <div class="field"><label for="w-name">Name</label><input id="w-name" value="${esc(w.name)}" list="known-names" placeholder="z. B. Musiala"></div>
       <div class="field"><label for="w-rating">Rating</label><input id="w-rating" inputmode="numeric" value="${w.rating}" placeholder="z. B. 84"></div>
@@ -607,14 +644,19 @@ function openWish(existing) {
       <div id="w-calc"></div></div>
     <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
     ${existing ? '<button type="button" class="mini" id="w-del" style="align-self:flex-start;color:var(--bad)">Von der Liste löschen</button>' : ""}
-    <p class="hint">Der Spieler erscheint auf der Einkaufsliste. Kauft ihr ihn später (über „Gekauft“, + oder Screenshot), wird er automatisch abgehakt.</p></form>`;
-  const valid = () => $("w-name").value.trim() && +$("w-rating").value >= 1 && +$("w-rating").value <= 99 && parseCoins($("w-price").value) > 0;
-  const refresh = sheet(existing ? "Ersatzspieler bearbeiten" : "Ersatzspieler planen", body, "Sichern", () => {
-    const name = $("w-name").value.trim();
-    S.saveWish({ id: existing ? existing.id : S.newId(), name, rating: +$("w-rating").value, chem: $("w-chem").value,
-      price: parseCoins($("w-price").value), offer: parseCoins($("w-offer").value) || null, qty: +$("w-qty").value, owner: existing?.owner || settings.name, createdAt: existing?.createdAt || Date.now() });
-    closeSheet(); toast(existing ? "Gespeichert" : `${name} steht auf der Einkaufsliste`);
+    <p class="hint"><b>Einkaufsliste</b>: wird gekauft (Ersatzspieler) und beim Kauf automatisch abgehakt. <b>Merkliste</b>: nur zum Beobachten, zählt nicht zur Einkaufsliste.</p></form>`;
+  const valid = () => $("w-name").value.trim() && +$("w-rating").value >= 1 && +$("w-rating").value <= 99 && (list === "watch" || parseCoins($("w-price").value) > 0);
+  const refresh = sheet(existing ? "Spieler bearbeiten" : "Spieler hinzufügen", body, "Sichern", async () => {
+    const name = $("w-name").value.trim(), rating = +$("w-rating").value;
+    const data = { rating, chem: $("w-chem").value, price: parseCoins($("w-price").value) || 0, offer: parseCoins($("w-offer").value) || null, qty: +$("w-qty").value };
+    // Schon auf einer Liste? Nur bei neuen Einträgen oder geändertem Spieler nachfragen
+    const changed = !existing || !sameName(existing.name, name) || existing.rating !== rating;
+    const on = changed ? listsWith(name, rating, existing?.id) : [];
+    if (on.length && !await askYesNo(`<b>${esc(name)} ${rating}</b> steht schon auf der ${on.join(" und der ")}. Soll der Spieler ein zweites Mal auf die ${list === "watch" ? "Merkliste" : "Einkaufsliste"}?`)) return;
+    S.saveWish({ id: existing ? existing.id : S.newId(), name, ...data, list, owner: existing?.owner || settings.name, createdAt: existing?.createdAt || Date.now() });
+    closeSheet(); toast(existing ? "Gespeichert" : `${name} steht auf der ${list === "watch" ? "Merkliste" : "Einkaufsliste"}`);
   }, valid);
+  $("w-list").addEventListener("click", e => { const b = e.target.closest("[data-wl]"); if (!b) return; list = b.dataset.wl; $("w-list").innerHTML = seg([["buy", "Einkaufsliste"], ["watch", "Merkliste"]], list, "wl"); refresh(); });
   const upd = () => { $("w-calc").innerHTML = calcHtml(parseCoins($("w-price").value), parseCoins($("w-offer").value) || null); refresh(); };
   $("w-name").addEventListener("change", () => { const l = lastCard($("w-name").value); if (l) { if (!$("w-rating").value) $("w-rating").value = l.rating; $("w-chem").value = l.chem; } upd(); });
   $("wf").addEventListener("input", upd); $("wf").addEventListener("submit", e => e.preventDefault());
@@ -764,6 +806,9 @@ function onViewClick(e) {
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
   const wi = t.closest("[data-wish]"); if (wi) return openWish(S.data.wishes.find(w => w.id === wi.dataset.wish));
+  const tb = t.closest("[data-tobuy]"); if (tb) { const w = S.data.wishes.find(x => x.id === tb.dataset.tobuy);
+    if (w) { S.saveWish({ ...w, list: "buy" }); toast(`${w.name} steht auf der Einkaufsliste${w.price ? "" : " – Preis noch eintragen"}`); if (!w.price) openWish({ ...w, list: "buy" }); } return; }
+  const wd = t.closest("[data-wdel]"); if (wd) return confirmButton(wd, "Löschen?", () => { S.deleteWish(wd.dataset.wdel); toast("Von der Merkliste gelöscht"); });
   const buy = t.closest("[data-buy]"); if (buy) return openBuy(buy.dataset.buy);
   const skip = t.closest("[data-skip]");
   if (skip) return confirmButton(skip, "Überspringen?", () => {
@@ -1066,6 +1111,68 @@ function progress(text, frac) {
   document.getElementById("pg-fill").style.width = Math.round(frac * 100) + "%";
 }
 const hideProgress = () => document.getElementById("progress")?.remove();
+
+// ---------- Spieler per Screenshot auf Einkaufs-/Merkliste ----------
+async function runWishScan(files) {
+  scanTitle = "Spieler werden erkannt"; progress("Wird vorbereitet …", 0);
+  try {
+    const { scanWishFiles } = await import("./ocr.js");
+    const found = await scanWishFiles(files, progress);
+    hideProgress();
+    if (!found.length) return toast("Auf dem Bild wurden keine Spieler erkannt", true);
+    const known = knownNames();
+    openWishScan(found.map(f => {
+      const name = f.name ? canonicalName(f.name, known) : "";
+      const last = name ? lastCard(name) : null;
+      return { include: !!name, name, rating: f.rating ?? last?.rating ?? "", chem: last?.chem || "Basic", price: f.price ?? "" };
+    }));
+  } catch (e) { hideProgress(); toast("Erkennung fehlgeschlagen: " + e.message, true); }
+}
+function openWishScan(drafts) {
+  let list = "buy";
+  const dupText = d => { const on = d.name ? listsWith(d.name, +d.rating) : []; return on.length ? `<div class="warn">Steht schon auf der ${on.join(" und der ")}.</div>` : ""; };
+  const draw = () => drafts.map((d, i) => `<div class="group ws-row" data-i="${i}">
+    <div class="ws-line"><input type="checkbox" data-k="include" ${d.include ? "checked" : ""} aria-label="Übernehmen">
+      <input data-k="name" value="${esc(d.name)}" list="known-names" placeholder="Name" aria-label="Name" class="ws-name"></div>
+    <div class="ws-line"><input data-k="rating" inputmode="numeric" value="${d.rating}" placeholder="Rat." aria-label="Rating" class="ws-rat">
+      <select data-k="chem" aria-label="Chemistry Style">${chemOptions(d.chem)}</select>
+      <input data-k="price" inputmode="decimal" value="${d.price}" placeholder="Preis" aria-label="Preis" class="ws-price"></div>
+    ${dupText(d)}</div>`).join("");
+  const valid = d => d.name.trim() && +d.rating >= 1 && +d.rating <= 99 && (list === "watch" || parseCoins(d.price) > 0);
+  const ready = () => drafts.filter(d => d.include && valid(d));
+  const body = `<div class="form">
+    <div id="ws-list">${seg([["buy", "Einkaufsliste"], ["watch", "Merkliste"]], list, "wl")}</div>
+    <div class="chips" style="padding:0"><button type="button" class="chip" data-all="1">Alle auswählen</button><button type="button" class="chip" data-all="0">Keine</button></div>
+    <div id="ws-rows">${draw()}</div>
+    <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    <p class="hint">Bitte kurz prüfen: Name, Rating und Preis werden aus dem Bild gelesen, der Chemistry Style steht dort nicht – vorbelegt ist der zuletzt genutzte Style.
+      Für die Einkaufsliste ist ein Preis nötig, für die Merkliste nicht.</p></div>`;
+  const refresh = sheet(`${drafts.length} Spieler erkannt`, body, "Hinzufügen", async () => {
+    let added = 0, skipped = 0;
+    for (const d of ready()) {
+      const on = listsWith(d.name.trim(), +d.rating);
+      if (on.length && !await askYesNo(`<b>${esc(d.name)} ${d.rating}</b> steht schon auf der ${on.join(" und der ")}. Soll der Spieler ein zweites Mal auf die ${list === "watch" ? "Merkliste" : "Einkaufsliste"}?`)) { skipped++; continue; }
+      S.saveWish({ id: S.newId(), name: d.name.trim(), rating: +d.rating, chem: d.chem, price: parseCoins(d.price) || 0, offer: null, qty: 1, list,
+        owner: settings.name, createdAt: Date.now() + added });
+      added++;
+    }
+    closeSheet();
+    toast(`${added} Spieler auf die ${list === "watch" ? "Merkliste" : "Einkaufsliste"} gesetzt${skipped ? ` · ${skipped} übersprungen` : ""}`);
+  }, () => ready().length > 0);
+  const sheetEl = layer.querySelector(".sheet");
+  sheetEl.addEventListener("click", e => {
+    const b = e.target.closest("[data-wl]"), all = e.target.closest("[data-all]");
+    if (b) { list = b.dataset.wl; $("ws-list").innerHTML = seg([["buy", "Einkaufsliste"], ["watch", "Merkliste"]], list, "wl"); refresh(); }
+    if (all) { drafts.forEach(d => d.include = all.dataset.all === "1"); $("ws-rows").innerHTML = draw(); refresh(); }
+  });
+  $("ws-rows").addEventListener("input", e => {
+    const g = e.target.closest("[data-i]"), k = e.target.dataset.k; if (!g || !k) return;
+    const d = drafts[+g.dataset.i]; d[k] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (k === "name") { const l = lastCard(d.name); if (l) { if (!d.rating) d.rating = l.rating; d.chem = l.chem; } }
+    refresh();
+  });
+  $("ws-rows").addEventListener("change", e => { if (["chem", "include", "name", "rating"].includes(e.target.dataset.k)) { $("ws-rows").innerHTML = draw(); refresh(); } });
+}
 
 async function runScan(files) {
   files = [...files];

@@ -82,10 +82,10 @@ async function firestoreBackend(config, depot) {
     coins: d.coins || 0, tlOwn: d.ownTransferListValue || 0, sold: d.soldCards || 0, listed: d.listedCards || 0,
     profit: d.tradingProfit || 0, notes: d.notes || "" } : null;
 
-  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price, qty: w.qty || 1, offer: w.offer || null,
+  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price || 0, qty: w.qty || 1, offer: w.offer || null, list: w.list || "buy",
     owner: w.owner || "", createdAt: fb.Timestamp.fromMillis(w.createdAt || Date.now()) });
   const wishFrom = (id, d) => d.name ? { id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", price: d.price || 0,
-    qty: d.qty || 1, offer: d.offer || null, owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
+    qty: d.qty || 1, offer: d.offer || null, list: d.list || "buy", owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
   const onErr = e => { data.error = e.message; emit(); };
   const unsubs = [
     // Mit Metadaten: zeigt, ob Änderungen noch nicht bei der Cloud angekommen sind (offline / Verbindung gestört)
