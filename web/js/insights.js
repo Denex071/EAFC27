@@ -6,7 +6,6 @@ import { nameKey } from "./parser.js";
 const isSold = c => c.vk != null;
 const sum = a => a.reduce((x, y) => x + y, 0);
 const hold = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate));
-const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); };
 
 // staleDays: ab wann eine Karte eine Preisanpassung braucht; lockDays: so viele Tage nach bestätigter Anpassung
 // noch unverkauft → nach dem Verkauf kein Nachkauf
@@ -22,8 +21,8 @@ export function flipStats(cards, name, rating, chem, minProfit = DEFAULTS.minPro
   const flips = (same.length >= 2 ? same : all).sort((a, b) => a.vkDate.localeCompare(b.vkDate));
   if (!flips.length) return null;
   const profits = flips.map(c => profitOf(c.ek, c.vk));
-  const recent = flips.slice(-3);
-  const expVk = median(recent.map(c => c.vk));
+  // Erwarteter VK: Durchschnitt aller Verkäufe dieser Karte (alle Styles) – wie „Ø VK“ in der Spielerliste
+  const expVk = Math.round(sum(all.map(c => c.vk)) / all.length);
   const maxEk = roundDown(expVk - Math.round(expVk * 0.05) - minProfit);
   return {
     n: flips.length, sameStyle: flips === same,
@@ -31,7 +30,7 @@ export function flipStats(cards, name, rating, chem, minProfit = DEFAULTS.minPro
     hold: sum(flips.map(hold)) / flips.length,
     losses: profits.filter(p => p < 0).length,
     history: flips.slice(-5).reverse().map(c => ({ ek: c.ek, vk: c.vk, date: c.vkDate, profit: profitOf(c.ek, c.vk) })),
-    expVk, maxEk: maxEk > 0 ? maxEk : null,
+    expVk, expN: all.length, maxEk: maxEk > 0 ? maxEk : null,
   };
 }
 

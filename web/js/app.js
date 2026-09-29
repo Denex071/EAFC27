@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.9.0";
+const VERSION = "1.9.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -730,7 +730,7 @@ function buyHtml() {
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       <b>TL</b> = diese Karte habt ihr noch aktiv (gekauft, nicht verkauft) – Vorsicht vor Doppelkäufen.
       „Gekauft“ speichert den Kauf, geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
-      max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
+      max. EK = Ø VK aller Verkäufe dieser Karte − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
 }
 
 /// Spieler von Hand auf die Einkaufsliste setzen bzw. bearbeiten
@@ -778,7 +778,7 @@ function openBuy(key) {
       <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}${g.wish.offer ? ` · Angebot ~${fmt(g.wish.offer)}` : ""}${g.replaces?.length ? ` · ersetzt ${g.replaces.map(c => esc(c.name)).join(", ")}` : ""}` : g.planned ? `geplant für ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${fmt(g.offer)}` : ""} · verkauft für ${fmt(g.lastVk)}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
     ${st ? `<div class="group"><div class="gh">Bisher ${st.n}× gedreht${st.sameStyle ? "" : " (alle Styles)"}</div>
       <div class="calc"><div class="l"><span>Ø Gewinn · Haltedauer</span><span class="num">${signed(st.avg)} · ${holdText(st.hold)}</span></div>
-        <div class="l"><span>Erwarteter VK (Mittel letzte 3)</span><span class="num">${fmt(st.expVk)}</span></div>
+        <div class="l"><span>Erwarteter VK (Ø aller ${st.expN} Verkäufe)</span><span class="num">${fmt(st.expVk)}</span></div>
         ${st.maxEk ? `<div class="l"><span>max. EK (mind. ${fmt(cfg().minProfit)} Gewinn)</span><span class="num gold-text">${fmt(st.maxEk)}</span></div>` : ""}</div>
       <div class="hist"><span class="h">Verkauft</span><span class="h num">EK</span><span class="h num">VK</span><span class="h">Gewinn</span>
         ${st.history.map(h => `<span>${fmtShort(parseDay(h.date))}</span><span class="num">${fmt(h.ek)}</span><span class="num">${fmt(h.vk)}</span>${profitHtml(h.profit)}`).join("")}</div></div>` : ""}
