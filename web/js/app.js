@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.7.2";
+const VERSION = "1.8.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -165,7 +165,22 @@ function wishSlots() {
 const wishGroups = () => { const slots = wishSlots(); return sortedWishes().map(w => ({
   key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, lastEk: w.price, lastVk: null, soldOn: null,
   items: Array(w.qty || 1).fill(w), replaces: slots.get(w.id) || [] })); };
-const allBuyGroups = () => [...restockGroups(), ...wishGroups()]; // Nachkauf verkaufter Karten hat Vorrang
+const allBuyGroups = () => [...restockGroups(), ...wishGroups()];
+/// Drehungen (Verkäufe) der letzten 7 Tage je Spieler + Rating; Tag 1 = heute. Nur gelesen, nichts wird geändert.
+function turnover(name, rating) {
+  const mine = S.data.cards.filter(c => sameName(c.name, name) && (!rating || c.rating === +rating)), today = new Date();
+  const days = mine.filter(isSold).map(c => daysBetween(parseDay(c.vkDate), today) + 1).filter(d => d >= 1 && d <= 7);
+  return { n: days.length, day: days.length ? Math.min(...days) : null, known: mine.length > 0 };
+}
+/// Rang auf der Einkaufsliste: oft gedreht → 1× in Tag 1–3 → neue Spieler → 1× in Tag 4–7 → länger nicht gedreht
+const turnRank = t => t.n >= 2 ? 0 : t.n === 1 && t.day <= 3 ? 1 : !t.known ? 2 : t.n === 1 ? 3 : 4;
+const addedAt = g => g.wish ? g.wish.createdAt || 0 : g.since;
+function sortedBuyGroups() {
+  const gs = allBuyGroups(); gs.forEach(g => { g.turn = turnover(g.name, g.rating); });
+  return gs.sort((a, b) => turnRank(a.turn) - turnRank(b.turn) || b.turn.n - a.turn.n || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
+}
+const turnText = t => t.n >= 2 ? `<b>${t.n}× gedreht</b> in 7 Tagen` : t.n === 1 ? `1× gedreht in 7 Tagen (Tag ${t.day})`
+  : t.known ? "in 7 Tagen nicht gedreht" : "<b>neuer Spieler</b> – noch nie gekauft";
 const openBuyCount = () => restockOpen().length + sum(sortedWishes().map(w => w.qty || 1));
 /// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen; ersetzte Ladenhüter sind damit erledigt
 function useWish(w, n = 1) {
@@ -619,7 +634,7 @@ function bindListInputs() {
 }
 
 function buyHtml() {
-  const groups = allBuyGroups(), restock = groups.filter(g => !g.wish), planned = groups.filter(g => g.wish);
+  const groups = sortedBuyGroups(), restock = groups.filter(g => !g.wish), planned = groups.filter(g => g.wish);
   const addBtn = `<div style="display:flex;gap:8px"><button class="secondary" data-act="wish" style="flex:1">+ Spieler hinzufügen</button>
     <label class="secondary" for="wishScanInput" style="flex:1;text-align:center">Screenshot hochladen</label></div>
     <input class="hidden" type="file" id="wishScanInput" accept="image/*" multiple>`;
@@ -642,6 +657,7 @@ function buyHtml() {
       ${badge(g.rating)}
       <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}</div>
         <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · ${g.planned ? "geplanter " : ""}EK ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${compact(g.offer)}` : ""} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
+        <div class="stat-line">${turnText(g.turn)}</div>
         ${g.wish?.offer ? `<div class="stat-line">Angebot ~<b>${fmt(g.wish.offer)}</b> · Gewinn ${signed(profitOf(g.lastEk, g.wish.offer))}</div>` : ""}
         ${g.wish ? `<div class="stat-line">${g.replaces.length ? `ersetzt <b>${g.replaces.map(c => esc(c.name)).join(", ")}</b> (kein Nachkauf)` : "bereit als Ersatz"} · geplant von ${esc(g.wish.owner || "euch")}</div>` : ""}
         ${g.st ? `<div class="stat-line">${g.st.n}× gedreht · Ø <b>${signed(g.st.avg)}</b> · ${holdText(g.st.hold)}${g.st.maxEk ? ` · max. EK <b>${fmt(g.st.maxEk)}</b>` : ""}${g.st.maxEk && g.lastEk > g.st.maxEk ? '<span class="tag alert">teuer</span>' : ""}</div>` : ""}</div>
@@ -649,16 +665,16 @@ function buyHtml() {
         <button class="mini" data-skip="${esc(g.key)}" aria-label="Überspringen" title="Überspringen">✕</button>
         <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`;
   return `<section class="tiles">
-      <div class="tile"><div class="t">Nachkauf</div><div class="v num">${count}</div><div class="d">${restock.length} verschiedene Karten</div></div>
+      <div class="tile"><div class="t">Einkaufsliste</div><div class="v num">${count + pcount}</div><div class="d">${count} Nachkauf · ${pcount} Ersatz</div></div>
       <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">inkl. ${pcount} Ersatzspieler</div></div></section>
-    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Nachkauf</h2><span class="hint">verkaufte Karten · Vorrang</span></div>
-      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${restock.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
-    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Ersatzspieler</h2><span class="hint">${freeSlots ? `${freeSlots} Ladenhüter zu ersetzen` : "von Hand geplant"}</span></div>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Einkaufsliste</h2><span class="hint">nach Drehungen (7 Tage)</span></div>
       ${freeSlots > usedSlots ? `<div class="warn" style="padding:0 14px 10px">${freeSlots - usedSlots} Ladenhüter ohne Ersatz – plane weitere Spieler.</div>` : ""}
-      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${planned.map(row).join("") || '<div class="empty">Noch keine Ersatzspieler geplant.</div>'}</div></section>
+      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${groups.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
     ${addBtn}
     ${watchHtml}
-    <p class="hint">Verkaufte Karten werden zuerst nachgekauft. Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch deine geplanten Ersatzspieler ersetzt – der älteste Plan zuerst.
+    <p class="hint">Reihenfolge: Karten, die sich in den letzten 7 Tagen am häufigsten gedreht haben, oben. Dann Karten mit 1 Drehung in Tag 1–3, dann neue Spieler (noch nie gekauft),
+      dann Karten mit 1 Drehung in Tag 4–7, ganz unten Karten ohne Drehung in 7 Tagen. Bei Gleichstand steht der ältere Eintrag oben.
+      Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch geplante Spieler („geplant“) ersetzt – der älteste Plan zuerst.
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       „Gekauft“ speichert den Kauf, geplante Spieler antippen zum Bearbeiten. Käufe über + oder per Screenshot haken passende Einträge automatisch ab.
       max. EK = mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn (${fmt(minProfit)}, änderbar unter Einstellungen).</p>`;
