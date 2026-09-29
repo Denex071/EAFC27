@@ -64,6 +64,7 @@ async function firestoreBackend(config, depot) {
     const d = { name: c.name, rating: c.rating, chemistryStyle: c.chem, buyPrice: c.ek, buyDate: ts(c.ekDate),
       owner: c.owner || "", notes: c.notes || "", createdAt: fb.Timestamp.fromMillis(c.createdAt || Date.now()) };
     if (c.vk != null) { d.sellPrice = c.vk; d.sellDate = ts(c.vkDate); }
+    if (c.vk != null && c.soldAt) d.soldAt = fb.Timestamp.fromMillis(c.soldAt); // genauer Verkaufszeitpunkt (Reihenfolge Einkaufsliste)
     if (c.restock) d.restock = c.restock; // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
     if (c.adjustedAt) d.priceAdjustedAt = ts(c.adjustedAt); // bestätigte Preisanpassung (Ladenhüter)
     if (c.targetVk) d.plannedSellPrice = c.targetVk;           // voraussichtlicher Angebotspreis (aus geplantem Kauf)
@@ -74,6 +75,7 @@ async function firestoreBackend(config, depot) {
     id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", ek: d.buyPrice, ekDate: day(d.buyDate),
     vk: d.sellPrice ?? null, vkDate: d.sellPrice != null ? day(d.sellDate) || day(d.buyDate) : null,
     owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null,
+    soldAt: d.sellPrice != null && d.soldAt ? d.soldAt.toMillis() : null,
     adjustedAt: day(d.priceAdjustedAt), targetVk: d.plannedSellPrice || null,
     marketEk: d.sellPrice == null ? d.currentMarketPrice || null : null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,

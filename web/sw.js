@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: App-Dateien aus dem Cache, Firebase/Schriften aus dem Netz.
-const VERSION = "fctrader-v1.7.0";
+const VERSION = "fctrader-v1.7.1";
 const SHELL = ["./", "index.html", "css/app.css", "config.js", "manifest.webmanifest",
   "js/app.js", "js/calc.js", "js/store.js", "js/parser.js", "js/ocr-lines.js", "js/chemicons.js", "js/chem-templates.js",
   "js/importer.js", "js/ocr.js", "js/insights.js", "js/wishscan.js", "js/digit-templates.js", "vendor/firebase.js", "icons/icon-192.png", "icons/apple-touch-icon.png"];

@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -114,17 +114,19 @@ const onRestock = c => isSold(c) && (c.restock === "manual"
   || ((c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-"))) && !slowSeller(c)));
 const restockOpen = () => S.data.cards.filter(onRestock);
 const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
+/// Zeitpunkt, an dem ein Verkauf auf die Einkaufsliste kam (ältere Daten ohne Uhrzeit: Verkaufstag)
+const soldTime = c => c.soldAt || parseDay(c.vkDate).getTime();
 function restockGroups() {
   const groups = new Map();
-  for (const c of restockOpen().sort((a, b) => a.vkDate.localeCompare(b.vkDate))) {
+  for (const c of restockOpen().sort((a, b) => soldTime(a) - soldTime(b) || (a.createdAt || 0) - (b.createdAt || 0))) {
     const k = restockKey(c);
     if (!groups.has(k)) groups.set(k, { key: k, items: [] });
     groups.get(k).items.push(c);
   }
   return [...groups.values()].map(g => {
     const newest = g.items[g.items.length - 1];
-    return { ...g, name: newest.name, rating: newest.rating, chem: newest.chem, lastEk: newest.ek, lastVk: newest.vk, soldOn: newest.vkDate };
-  }).sort((a, b) => b.soldOn.localeCompare(a.soldOn) || a.name.localeCompare(b.name));
+    return { ...g, name: newest.name, rating: newest.rating, chem: newest.chem, lastEk: newest.ek, lastVk: newest.vk, soldOn: newest.vkDate, since: soldTime(g.items[0]) };
+  }).sort((a, b) => a.since - b.since || a.name.localeCompare(b.name)); // älteste Eingabe oben, neueste unten
 }
 /// Von Hand geplante Käufe als Gruppen (oben auf der Einkaufsliste)
 const isWatch = w => w.list === "watch"; // Merkliste: nur gemerkt, zählt nicht zur Einkaufsliste
@@ -908,7 +910,7 @@ function openAdd(existing) {
       ek: parseCoins($("f-ek").value), ekDate: $("f-ekd").value || toISODate(new Date()), notes: $("f-notes").value.trim() });
     if (existing) {
       const vk = parseCoins($("f-vk").value); card.vk = vk || null; card.vkDate = vk ? ($("f-vkd").value || toISODate(new Date())) : null;
-      if (vk && !existing.vk) card.restock = "open"; // hier verkauft → auf die Einkaufsliste
+      if (vk && !existing.vk) { card.restock = "open"; card.soldAt = Date.now(); } // hier verkauft → auf die Einkaufsliste
       if (vk) card.marketEk = null;
       if (!vk) card.restock = null;                  // Verkauf entfernt → von der Liste
     }
@@ -945,7 +947,7 @@ function openSell(card, presetPrice = card.targetVk) {
     <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
-    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), restock: "open", marketEk: null });
+    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), soldAt: Date.now(), restock: "open", marketEk: null });
     const date = $("s-date").value || toISODate(new Date());
     closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)) + (slowSeller({ ...card, vkDate: date }) ? " · Ladenhüter, kein Nachkauf" : ""));
   }, () => parseCoins($("s-vk").value) > 0);
@@ -1271,8 +1273,8 @@ function openBulkSell(items) {
     <p class="hint">Jeder Verkauf wird dem ältesten offenen Kauf dieses Spielers zugeordnet. Chemistry Style und EK kommen aus dem Kauf.</p></div>`;
   const refresh = sheet(drafts.length === 1 ? "Verkauf prüfen" : `${drafts.length} Verkäufe prüfen`, body, "Verbuchen", () => {
     const date = $("v-date").value || toISODate(new Date());
-    let total = 0;
-    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, restock: "open", marketEk: null }); }
+    let total = 0, at = Date.now();
+    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, soldAt: at++, restock: "open", marketEk: null }); }
     closeSheet(); toast(`Verbucht · Gewinn ${signed(total)}`);
   }, () => ready().length > 0);
   $("v-list").addEventListener("input", e => {
