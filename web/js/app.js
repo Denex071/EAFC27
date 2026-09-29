@@ -2,12 +2,12 @@
 
 import * as S from "./store.js";
 import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, signed, compact, pct, parseCoins,
-  DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, priceStep } from "./calc.js";
+  DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, roundPrice, stepPrice } from "./calc.js";
 import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.9.1";
+const VERSION = "1.9.2";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -450,7 +450,6 @@ function staleHtml() {
 
 /// Preisanpassung bestätigen. Der aktuelle Markt-EK dient nur zur Berechnung des neuen VK – der EK der Karte bleibt unverändert.
 function openAdjust(card) {
-  const step = priceStep;
   const again = !!card.adjustedAt;
   let vkTouched = !!card.targetVk;
   const body = `<div class="form">
@@ -480,7 +479,7 @@ function openAdjust(card) {
   };
   layer.querySelector(".sheet").addEventListener("click", e => {
     const d = e.target.closest("[data-ap]"), v = e.target.closest("[data-av]");
-    if (d) { const p = parseCoins($("a-vk").value) || target(card.ek); $("a-vk").value = Math.max(150, p + +d.dataset.ap * step(p + (+d.dataset.ap < 0 ? -1 : 0))); vkTouched = true; upd(); }
+    if (d) { const p = parseCoins($("a-vk").value) || target(card.ek); $("a-vk").value = stepPrice(p, +d.dataset.ap); vkTouched = true; upd(); }
     if (v) { $("a-vk").value = v.dataset.av === "calc" ? target(parseCoins($("a-ek").value) || card.ek) : v.dataset.av; vkTouched = v.dataset.av !== "calc"; upd(); }
   });
   // Aktuellen EK ändern → neuer VK = EK + Aufschlag (solange der VK nicht von Hand gesetzt wurde)
@@ -552,7 +551,7 @@ const playerRow = (p, rank) => `<div class="row"><span class="meta num" style="w
   <div class="grow"><div class="name">${esc(p.name)}</div><div class="meta">${p.n}× verkauft · VK ${compact(p.vk)} · Ø ${signed(p.avg)}</div></div>${profitHtml(p.profit)}</div>`;
 
 function dayChart(days) {
-  const W = 340, H = 170, L = 44, B = 22, T = 10;
+  const W = 340, H = 170, L = 62, B = 22, T = 10;
   const max = Math.max(1, ...days.map(d => d.profit)), min = Math.min(0, ...days.map(d => d.profit));
   const y = v => T + (H - T - B) * (max - v) / (max - min);
   const bw = (W - L) / days.length;
@@ -572,7 +571,7 @@ function dayChart(days) {
 
 /// Säulen mit einer Nulllinie; antippbar (data-<attr>=index).
 function barChart(items, selIdx, attr, label) {
-  const W = 340, H = 150, L = 44, B = 22, T = 10;
+  const W = 340, H = 150, L = 62, B = 22, T = 10;
   const max = Math.max(1, ...items.map(d => d.v)), min = Math.min(0, ...items.map(d => d.v));
   const y = v => T + (H - T - B) * (max - v) / (max - min);
   const bw = (W - L) / items.length;
@@ -588,7 +587,7 @@ function barChart(items, selIdx, attr, label) {
 }
 /// Linie mit Punkten; antippbar wie barChart.
 function lineChart(items, selIdx, attr, label) {
-  const W = 340, H = 130, L = 44, B = 22, T = 10;
+  const W = 340, H = 130, L = 62, B = 22, T = 10;
   const max = Math.max(1, ...items.map(d => d.v)), min = Math.min(0, ...items.map(d => d.v));
   const y = v => T + (H - T - B) * (max - v) / (max - min);
   const bw = (W - L) / items.length, x = i => L + i * bw + bw / 2;
@@ -604,7 +603,7 @@ function lineChart(items, selIdx, attr, label) {
 /// Verkäufe einer Karte (gleicher Spieler & Rating) und ihr durchschnittlicher VK
 const cardKey = c => `${nameKey(c.name)}|${c.rating}`;
 const salesOf = (name, rating) => S.data.cards.filter(c => isSold(c) && cardKey(c) === cardKey({ name, rating }));
-const avgVk = (name, rating) => { const s = salesOf(name, rating); return s.length ? Math.round(sum(s.map(c => c.vk)) / s.length) : null; };
+const avgVk = (name, rating) => { const s = salesOf(name, rating); return s.length ? roundPrice(sum(s.map(c => c.vk)) / s.length) : null; };
 const holdOf = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate));
 
 /// Verkauft-Tab: alle Verkäufe einer Karte zu einer Zeile zusammengefasst
@@ -615,7 +614,7 @@ function soldGroupsHtml(list) {
     items.sort((a, b) => b.vkDate.localeCompare(a.vkDate) || (b.soldAt || 0) - (a.soldAt || 0));
     return { key, items, name: items[0].name, rating: items[0].rating, last: items[0].vkDate,
       profit: sum(items.map(c => profitOf(c.ek, c.vk))), avgEk: sum(items.map(c => c.ek)) / items.length,
-      avgVk: Math.round(sum(items.map(c => c.vk)) / items.length), hold: sum(items.map(holdOf)) / items.length };
+      avgVk: roundPrice(sum(items.map(c => c.vk)) / items.length), hold: sum(items.map(holdOf)) / items.length };
   });
   const key = { newest: g => -parseDay(g.last), profit: g => -g.profit, rating: g => -g.rating, price: g => -g.avgEk, hold: g => -g.hold };
   gs.sort((a, b) => key[ui.sort](a) - key[ui.sort](b) || a.name.localeCompare(b.name));
@@ -633,7 +632,7 @@ function openSoldGroup(key) {
     <div class="group"><div class="field" style="border:0">${badge(items[0].rating)}<div class="grow" style="min-width:0"><div class="name">${esc(items[0].name)}</div>
       <div class="meta">${n} ${n === 1 ? "Verkauf" : "Verkäufe"} · Gewinn ${profitHtml(profit)}</div></div></div></div>
     <section class="tiles">
-      <div class="tile"><div class="t">Ø VK</div><div class="v num">${fmt(Math.round(sum(items.map(c => c.vk)) / n))}</div><div class="d">Ø EK ${fmt(Math.round(sum(items.map(c => c.ek)) / n))}</div></div>
+      <div class="tile"><div class="t">Ø VK</div><div class="v num">${fmt(roundPrice(sum(items.map(c => c.vk)) / n))}</div><div class="d">Ø EK ${fmt(Math.round(sum(items.map(c => c.ek)) / n))}</div></div>
       <div class="tile"><div class="t">Ø Gewinn</div><div class="v num">${signed(Math.round(profit / n))}</div><div class="d">Ø ${holdText(sum(items.map(holdOf)) / n)} gehalten</div></div></section>
     <div class="list">${items.map(c => `<div class="item" tabindex="0" data-edit="${c.id}">
       <div class="grow" style="min-width:0"><div class="name" style="font-size:14px">${fmtDate(parseDay(c.vkDate))}</div>
@@ -771,7 +770,6 @@ function openWish(existing) {
 
 function openBuy(key) {
   const g = allBuyGroups().find(x => x.key === key); if (!g) return;
-  const step = priceStep;
   const st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, cfg().minProfit);
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(g.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(g.name)}</div>
@@ -811,7 +809,7 @@ function openBuy(key) {
   layer.querySelector(".sheet").addEventListener("click", e => {
     const d = e.target.closest("[data-d]"), a = e.target.closest("[data-app]"), mx = e.target.closest("[data-max]");
     if (mx) { $("k-ek").value = st.maxEk; upd(); }
-    if (d) { const v = parseCoins($("k-ek").value) || g.lastEk; $("k-ek").value = +d.dataset.d === 0 ? g.lastEk : Math.max(150, v + +d.dataset.d * step(v)); }
+    if (d) { const v = parseCoins($("k-ek").value) || g.lastEk; $("k-ek").value = +d.dataset.d === 0 ? g.lastEk : stepPrice(v, +d.dataset.d); }
     if (a) $("k-ek").value += a.dataset.app;
     if (d || a) upd();
   });
@@ -1059,7 +1057,7 @@ function openSell(card, presetPrice = card.targetVk) {
   const upd = () => { $("s-calc").innerHTML = calcHtml(card.ek, parseCoins($("s-vk").value)) || '<div class="calc"><div class="l">Preis eingeben</div></div>'; refresh(); };
   layer.querySelector(".sheet").addEventListener("click", e => {
     const m = e.target.closest("[data-m]"), a = e.target.closest("[data-app]");
-    if (m) $("s-vk").value = m.dataset.m === "ziel" ? target(card.ek) : m.dataset.m === "avg" ? Math.round(av / priceStep(av)) * priceStep(av) : breakEven(card.ek, +m.dataset.m);
+    if (m) $("s-vk").value = m.dataset.m === "ziel" ? target(card.ek) : m.dataset.m === "avg" ? av : breakEven(card.ek, +m.dataset.m);
     if (a) $("s-vk").value += a.dataset.app;
     if (m || a) upd();
   });
@@ -1096,7 +1094,7 @@ function openSnap(existing) {
 
 function openGoal() {
   const body = `<div class="form"><div class="group">
-    <div class="field"><label for="g-v">Gewinn pro Woche</label><input id="g-v" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="z. B. 50k"></div></div>
+    <div class="field"><label for="g-v">Gewinn pro Woche</label><input id="g-v" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="z. B. 50.000"></div></div>
     <div class="chips" style="padding:0">${[25000, 50000, 100000, 150000, 200000].map(v => `<button type="button" class="chip" data-gv="${v}">${compact(v)}</button>`).join("")}</div>
     <p class="hint">Gilt für das ganze Depot. Leer lassen = kein Ziel.</p></div>`;
   sheet("Wochenziel", body, "Sichern", () => { S.saveSettings({ weeklyGoal: parseCoins($("g-v").value) || 0 }); closeSheet(); toast("Wochenziel gespeichert"); });

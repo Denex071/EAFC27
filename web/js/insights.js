@@ -1,6 +1,6 @@
 // Auswertungen: Nachkauf-Bewertung, Ladenhüter, Aufschlüsselung, Verluste, Kapital – reine Rechenfunktionen.
 
-import { profitOf, roundDown, DAY, dOnly, toISODate, parseDay, daysBetween, isoWeek } from "./calc.js";
+import { profitOf, roundDown, roundPrice, DAY, dOnly, toISODate, parseDay, daysBetween, isoWeek } from "./calc.js";
 import { nameKey } from "./parser.js";
 
 const isSold = c => c.vk != null;
@@ -22,7 +22,7 @@ export function flipStats(cards, name, rating, chem, minProfit = DEFAULTS.minPro
   if (!flips.length) return null;
   const profits = flips.map(c => profitOf(c.ek, c.vk));
   // Erwarteter VK: Durchschnitt aller Verkäufe dieser Karte (alle Styles) – wie „Ø VK“ in der Spielerliste
-  const expVk = Math.round(sum(all.map(c => c.vk)) / all.length);
+  const expVk = roundPrice(sum(all.map(c => c.vk)) / all.length);
   const maxEk = roundDown(expVk - Math.round(expVk * 0.05) - minProfit);
   return {
     n: flips.length, sameStyle: flips === same,
@@ -43,8 +43,8 @@ export function staleCards(cards, days = DEFAULTS.staleDays, today = new Date())
 
 // ---------- Aufschlüsselung ----------
 
-export const PRICE_CLASSES = [[2000, "bis 2k"], [4000, "2–4k"], [6000, "4–6k"], [10000, "6–10k"], [15000, "10–15k"],
-  [25000, "15–25k"], [50000, "25–50k"], [100000, "50–100k"], [Infinity, "über 100k"]];
+export const PRICE_CLASSES = [[2000, "bis 2.000"], [4000, "2.000–4.000"], [6000, "4.000–6.000"], [10000, "6.000–10.000"], [15000, "10.000–15.000"],
+  [25000, "15.000–25.000"], [50000, "25.000–50.000"], [100000, "50.000–100.000"], [Infinity, "über 100.000"]];
 const WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
 function groupRows(sold, keyOf, labelOf, order) {

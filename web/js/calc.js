@@ -20,11 +20,16 @@ export const TAX_RATE = 0.05;
 export const tax = p => Math.round(p * TAX_RATE);
 /// Gewinn = Verkaufspreis − 5 % EA Tax − Einkaufspreis
 export const profitOf = (ek, vk) => vk - tax(vk) - ek;
-export const target = ek => ek + (TIERS.find(t => ek <= t[0]) || [0, MARKUP_ABOVE])[1];
-
+/// EA-Preisstufen: bis 1.000 in 50ern (ab 150), bis 10.000 in 100ern, bis 50.000 in 250ern, bis 100.000 in 500ern, darüber in 1.000ern
 export const priceStep = p => p < 1000 ? 50 : p < 10000 ? 100 : p < 50000 ? 250 : p < 100000 ? 500 : 1000;
 const roundUp = p => Math.max(150, Math.ceil(p / priceStep(p)) * priceStep(p));
 export const roundDown = p => Math.max(150, Math.floor(p / priceStep(p)) * priceStep(p));
+/// Nächster gültiger Marktpreis
+export const roundPrice = p => { const d = roundDown(p), u = roundUp(p); return p - d <= u - p ? d : u; };
+/// Eine Preisstufe höher (dir > 0) bzw. tiefer (dir < 0) – auch über Grenzen wie 10.000 → 9.900 hinweg
+export const stepPrice = (p, dir) => dir > 0 ? roundUp(p + 1) : roundDown(p - 1);
+/// kalk. VK = EK + Aufschlag laut Tabelle, auf den nächsten gültigen Preis aufgerundet
+export const target = ek => roundUp(ek + (TIERS.find(t => ek <= t[0]) || [0, MARKUP_ABOVE])[1]);
 /// Kleinster gültiger Marktpreis, der nach Tax mindestens EK × (1 + Marge) bringt.
 export function breakEven(ek, margin = 0) {
   const goal = Math.ceil(ek * (1 + margin));
@@ -37,12 +42,8 @@ export function breakEven(ek, margin = 0) {
 
 export const fmt = n => Math.round(n).toLocaleString("de-DE");
 export const signed = n => (n > 0 ? "+" : n < 0 ? "−" : "") + fmt(Math.abs(n));
-export function compact(n) {
-  const a = Math.abs(n), s = n < 0 ? "−" : "";
-  if (a >= 1e6) return s + (a / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 2 }) + "M";
-  if (a >= 1e4) return s + (a / 1e3).toLocaleString("de-DE", { maximumFractionDigits: 1 }) + "k";
-  return s + fmt(a);
-}
+/// Zahlen immer ausgeschrieben (keine k/M-Abkürzungen)
+export const compact = n => (n < 0 ? "−" : "") + fmt(Math.abs(n));
 export const pct = v => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toLocaleString("de-DE",
   { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %";
 
