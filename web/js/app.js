@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.7.1";
+const VERSION = "1.7.2";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -113,7 +113,9 @@ const slowSeller = c => !!c.adjustedAt && daysBetween(parseDay(c.adjustedAt), pa
 const onRestock = c => isSold(c) && (c.restock === "manual"
   || ((c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-"))) && !slowSeller(c)));
 const restockOpen = () => S.data.cards.filter(onRestock);
-const restockKey = c => `${nameKey(c.name)}|${c.rating}|${c.chem}`;
+/// Was nachgekauft wird: die Daten des Ersatzspielers (falls übernommen), sonst die der verkauften Karte
+const buyAs = c => c.plan || { name: c.name, rating: c.rating, chem: c.chem, ek: c.ek, offer: null };
+const restockKey = c => { const b = buyAs(c); return `${nameKey(b.name)}|${b.rating}|${b.chem}|${b.offer || ""}`; };
 /// Zeitpunkt, an dem ein Verkauf auf die Einkaufsliste kam (ältere Daten ohne Uhrzeit: Verkaufstag)
 const soldTime = c => c.soldAt || parseDay(c.vkDate).getTime();
 function restockGroups() {
@@ -124,8 +126,9 @@ function restockGroups() {
     groups.get(k).items.push(c);
   }
   return [...groups.values()].map(g => {
-    const newest = g.items[g.items.length - 1];
-    return { ...g, name: newest.name, rating: newest.rating, chem: newest.chem, lastEk: newest.ek, lastVk: newest.vk, soldOn: newest.vkDate, since: soldTime(g.items[0]) };
+    const newest = g.items[g.items.length - 1], b = buyAs(newest);
+    return { ...g, name: b.name, rating: b.rating, chem: b.chem, lastEk: b.ek, offer: b.offer, planned: !!newest.plan,
+      lastVk: newest.vk, soldOn: newest.vkDate, since: soldTime(g.items[0]) };
   }).sort((a, b) => a.since - b.since || a.name.localeCompare(b.name)); // älteste Eingabe oben, neueste unten
 }
 /// Von Hand geplante Käufe als Gruppen (oben auf der Einkaufsliste)
@@ -172,14 +175,45 @@ function useWish(w, n = 1) {
 
 /// Neuer Kauf erfasst → passenden offenen Listeneintrag (gleicher Spieler & Rating, bevorzugt gleicher Stil) abhaken.
 function consumeRestock(card) {
-  const match = restockOpen().filter(c => sameName(c.name, card.name) && c.rating === card.rating)
-    .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem) || a.vkDate.localeCompare(b.vkDate))[0];
+  const match = restockOpen().filter(c => sameName(buyAs(c).name, card.name) && buyAs(c).rating === card.rating)
+    .sort((a, b) => (buyAs(a).chem !== card.chem) - (buyAs(b).chem !== card.chem) || soldTime(a) - soldTime(b))[0];
   if (match) { S.saveCard({ ...match, restock: "done" }); return true; }
   // sonst einen von Hand geplanten Kauf (gleicher Spieler & Rating) abhaken
   const wish = sortedWishes().filter(w => sameName(w.name, card.name) && w.rating === card.rating)
     .sort((a, b) => (a.chem !== card.chem) - (b.chem !== card.chem))[0];
   if (wish) useWish(wish);
   return !!wish;
+}
+
+/// Verkaufte Karte, deren Spieler schon als Ersatzspieler geplant ist: der geplante Eintrag rückt in den Nachkauf.
+/// Name, Rating, Chemistry Style, EK (und Angebotspreis) kommen aus dem Ersatzspieler, nicht aus der verkauften Karte.
+function planFromWish(card, soldAt) {
+  if (card.plan || !onRestock(card)) return null;
+  const w = sortedWishes().filter(w => sameName(w.name, card.name) && (w.createdAt || 0) < soldAt)
+    .sort((a, b) => (+a.rating !== card.rating) - (+b.rating !== card.rating) || (a.createdAt || 0) - (b.createdAt || 0))[0];
+  if (!w) return null;
+  (w.qty || 1) > 1 ? S.saveWish({ ...w, qty: w.qty - 1 }) : S.deleteWish(w.id);
+  return { name: w.name, rating: +w.rating || card.rating, chem: w.chem || card.chem, ek: w.price || card.ek, offer: w.offer || null };
+}
+/// Verkauf speichern (inkl. Übernahme eines passenden Ersatzspielers)
+function saveSale(card) {
+  const plan = planFromWish(card, card.soldAt || Date.now());
+  S.saveCard(plan ? { ...card, plan } : card);
+  return plan;
+}
+/// Auch Verkäufe von anderen Geräten / aus älteren App-Versionen abgleichen
+const merged = new Set(); let merging = false;
+function mergePlannedRestock() {
+  if (!S.data.ready || merging) return;
+  merging = true;
+  try {
+    for (const c of restockOpen()) {
+      if (c.plan || merged.has(c.id)) continue;
+      merged.add(c.id);
+      const plan = planFromWish(c, c.soldAt || parseDay(c.vkDate).getTime() + DAY - 1);
+      if (plan) S.saveCard({ ...c, plan }); else merged.delete(c.id);
+    }
+  } finally { merging = false; }
 }
 
 // ---------- Bausteine ----------
@@ -607,7 +641,7 @@ function buyHtml() {
   const row = g => `<div class="item" style="cursor:default">
       ${badge(g.rating)}
       <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}</div>
-        <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · EK ${fmt(g.lastEk)} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
+        <div class="meta">${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · ${g.planned ? "geplanter " : ""}EK ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${compact(g.offer)}` : ""} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
         ${g.wish?.offer ? `<div class="stat-line">Angebot ~<b>${fmt(g.wish.offer)}</b> · Gewinn ${signed(profitOf(g.lastEk, g.wish.offer))}</div>` : ""}
         ${g.wish ? `<div class="stat-line">${g.replaces.length ? `ersetzt <b>${g.replaces.map(c => esc(c.name)).join(", ")}</b> (kein Nachkauf)` : "bereit als Ersatz"} · geplant von ${esc(g.wish.owner || "euch")}</div>` : ""}
         ${g.st ? `<div class="stat-line">${g.st.n}× gedreht · Ø <b>${signed(g.st.avg)}</b> · ${holdText(g.st.hold)}${g.st.maxEk ? ` · max. EK <b>${fmt(g.st.maxEk)}</b>` : ""}${g.st.maxEk && g.lastEk > g.st.maxEk ? '<span class="tag alert">teuer</span>' : ""}</div>` : ""}</div>
@@ -672,7 +706,7 @@ function openBuy(key) {
   const st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, cfg().minProfit);
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(g.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(g.name)}</div>
-      <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}${g.wish.offer ? ` · Angebot ~${fmt(g.wish.offer)}` : ""}${g.replaces?.length ? ` · ersetzt ${g.replaces.map(c => esc(c.name)).join(", ")}` : ""}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
+      <div class="meta">${g.wish ? `geplant für ${fmt(g.lastEk)}${g.wish.offer ? ` · Angebot ~${fmt(g.wish.offer)}` : ""}${g.replaces?.length ? ` · ersetzt ${g.replaces.map(c => esc(c.name)).join(", ")}` : ""}` : g.planned ? `geplant für ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${fmt(g.offer)}` : ""} · verkauft für ${fmt(g.lastVk)}` : `zuletzt EK ${fmt(g.lastEk)} · VK ${fmt(g.lastVk)}`}</div></div></div></div>
     ${st ? `<div class="group"><div class="gh">Bisher ${st.n}× gedreht${st.sameStyle ? "" : " (alle Styles)"}</div>
       <div class="calc"><div class="l"><span>Ø Gewinn · Haltedauer</span><span class="num">${signed(st.avg)} · ${holdText(st.hold)}</span></div>
         <div class="l"><span>Erwarteter VK (Mittel letzte 3)</span><span class="num">${fmt(st.expVk)}</span></div>
@@ -682,7 +716,7 @@ function openBuy(key) {
     <div class="group"><div class="gh">Nachkauf</div>
       <div class="field"><label for="k-ek">Einkaufspreis</label><input id="k-ek" inputmode="decimal" value="${g.lastEk}"></div>
       <div class="chips"><button type="button" class="chip" data-d="-1">− Stufe</button><button type="button" class="chip" data-d="1">+ Stufe</button>
-        <button type="button" class="chip" data-d="0">${g.wish ? "Geplanter EK" : "Letzter EK"}</button>${st?.maxEk ? `<button type="button" class="chip" data-max="1">max. EK ${compact(st.maxEk)}</button>` : ""}<button type="button" class="chip" data-app="000">+000</button></div>
+        <button type="button" class="chip" data-d="0">${g.wish || g.planned ? "Geplanter EK" : "Letzter EK"}</button>${st?.maxEk ? `<button type="button" class="chip" data-max="1">max. EK ${compact(st.maxEk)}</button>` : ""}<button type="button" class="chip" data-app="000">+000</button></div>
       <div id="k-warn"></div>
       ${g.items.length > 1 ? `<div class="field"><label for="k-qty">Anzahl</label><select id="k-qty">${g.items.map((_, i) => `<option ${i === 0 ? "selected" : ""}>${i + 1}</option>`).join("")}</select></div>` : ""}
       <div class="field"><label for="k-chem">Chemistry Style</label><select id="k-chem">${chemOptions(g.chem)}</select></div>
@@ -693,7 +727,7 @@ function openBuy(key) {
     const ek = parseCoins($("k-ek").value), n = qty();
     for (let i = 0; i < n; i++) {
       S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, ek, ekDate: $("k-date").value || toISODate(new Date()),
-        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i, ...(g.wish?.offer ? { targetVk: g.wish.offer } : {}) });
+        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i, ...((g.wish?.offer || g.offer) ? { targetVk: g.wish?.offer || g.offer } : {}) });
       if (!g.wish) S.saveCard({ ...g.items[i], restock: "done" });
     }
     if (g.wish) useWish(g.wish, n);
@@ -701,7 +735,7 @@ function openBuy(key) {
   }, () => parseCoins($("k-ek").value) > 0);
   const upd = () => {
     const ek = parseCoins($("k-ek").value);
-    $("k-calc").innerHTML = calcHtml(ek, g.wish?.offer || null);
+    $("k-calc").innerHTML = calcHtml(ek, g.wish?.offer || g.offer || null);
     $("k-warn").innerHTML = st?.maxEk && ek > st.maxEk ? `<div class="warn">Über max. EK – beim üblichen VK von ${fmt(st.expVk)} bleiben nur ${signed(profitOf(ek, st.expVk))}.</div>` : "";
     refresh();
   };
@@ -915,7 +949,7 @@ function openAdd(existing) {
       if (!vk) card.restock = null;                  // Verkauf entfernt → von der Liste
     }
     else { card.vk = null; card.vkDate = null; }
-    S.saveCard(card);
+    existing && card.vk && !existing.vk ? saveSale(card) : S.saveCard(card);
     if (!existing && consumeRestock(card)) toast(`${card.name} auf der Einkaufsliste abgehakt`);
   }
   layer.querySelector(".sheet").addEventListener("click", e => {
@@ -947,9 +981,9 @@ function openSell(card, presetPrice = card.targetVk) {
     <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
-    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), soldAt: Date.now(), restock: "open", marketEk: null });
+    const plan = saveSale({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), soldAt: Date.now(), restock: "open", marketEk: null });
     const date = $("s-date").value || toISODate(new Date());
-    closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)) + (slowSeller({ ...card, vkDate: date }) ? " · Ladenhüter, kein Nachkauf" : ""));
+    closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)) + (plan ? " · Ersatzspieler übernommen" : slowSeller({ ...card, vkDate: date }) ? " · Ladenhüter, kein Nachkauf" : ""));
   }, () => parseCoins($("s-vk").value) > 0);
   const upd = () => { $("s-calc").innerHTML = calcHtml(card.ek, parseCoins($("s-vk").value)) || '<div class="calc"><div class="l">Preis eingeben</div></div>'; refresh(); };
   layer.querySelector(".sheet").addEventListener("click", e => {
@@ -1274,7 +1308,7 @@ function openBulkSell(items) {
   const refresh = sheet(drafts.length === 1 ? "Verkauf prüfen" : `${drafts.length} Verkäufe prüfen`, body, "Verbuchen", () => {
     const date = $("v-date").value || toISODate(new Date());
     let total = 0, at = Date.now();
-    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, soldAt: at++, restock: "open", marketEk: null }); }
+    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); saveSale({ ...c, vk, vkDate: date, soldAt: at++, restock: "open", marketEk: null }); }
     closeSheet(); toast(`Verbucht · Gewinn ${signed(total)}`);
   }, () => ready().length > 0);
   $("v-list").addEventListener("input", e => {
@@ -1294,7 +1328,8 @@ async function start() {
   closeSheet();
   if (!settings.name || !settings.depot) return renderOnboarding();
   renderShell();
-  unsub = S.subscribe(() => render());
+  let mergeTimer = 0; // erst nach dem laufenden Speichervorgang abgleichen
+  unsub = S.subscribe(() => { clearTimeout(mergeTimer); mergeTimer = setTimeout(mergePlannedRestock, 50); render(); });
   await S.connect({ config: CLOUD ? window.FIREBASE_CONFIG : null, depot: settings.depot, demoSeed });
   render();
 }

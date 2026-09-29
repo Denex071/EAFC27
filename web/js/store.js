@@ -65,7 +65,8 @@ async function firestoreBackend(config, depot) {
       owner: c.owner || "", notes: c.notes || "", createdAt: fb.Timestamp.fromMillis(c.createdAt || Date.now()) };
     if (c.vk != null) { d.sellPrice = c.vk; d.sellDate = ts(c.vkDate); }
     if (c.vk != null && c.soldAt) d.soldAt = fb.Timestamp.fromMillis(c.soldAt); // genauer Verkaufszeitpunkt (Reihenfolge Einkaufsliste)
-    if (c.restock) d.restock = c.restock; // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
+    if (c.restock) d.restock = c.restock;
+    if (c.plan && c.vk != null) d.restockPlan = { name: c.plan.name, rating: c.plan.rating, chemistryStyle: c.plan.chem, buyPrice: c.plan.ek, offer: c.plan.offer || null }; // Nachkauf mit Daten des Ersatzspielers // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
     if (c.adjustedAt) d.priceAdjustedAt = ts(c.adjustedAt); // bestätigte Preisanpassung (Ladenhüter)
     if (c.targetVk) d.plannedSellPrice = c.targetVk;           // voraussichtlicher Angebotspreis (aus geplantem Kauf)
     if (c.marketEk && c.vk == null) d.currentMarketPrice = c.marketEk; // aktueller Markt-EK (nur Grundlage für neuen VK, EK bleibt)
@@ -76,6 +77,8 @@ async function firestoreBackend(config, depot) {
     vk: d.sellPrice ?? null, vkDate: d.sellPrice != null ? day(d.sellDate) || day(d.buyDate) : null,
     owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null,
     soldAt: d.sellPrice != null && d.soldAt ? d.soldAt.toMillis() : null,
+    plan: d.sellPrice != null && d.restockPlan ? { name: d.restockPlan.name, rating: d.restockPlan.rating, chem: d.restockPlan.chemistryStyle,
+      ek: d.restockPlan.buyPrice, offer: d.restockPlan.offer || null } : null,
     adjustedAt: day(d.priceAdjustedAt), targetVk: d.plannedSellPrice || null,
     marketEk: d.sellPrice == null ? d.currentMarketPrice || null : null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,
