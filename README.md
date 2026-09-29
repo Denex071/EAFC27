@@ -77,13 +77,10 @@ Beide Varianten nutzen dasselbe Datenmodell und können parallel verwendet werde
   (mittlerer VK der letzten 3 Verkäufe − 5 % Tax − Mindestgewinn). Liegt der letzte EK darüber, erscheint „teuer“.
 - Beim „Gekauft“ zusätzlich die letzten Verkäufe (EK/VK/Gewinn), ein Chip „max. EK“ und eine Warnung bei zu hohem Preis.
 
-### Transferliste („gelistet“)
-- Offene Karten lassen sich mit Angebotspreis als **gelistet** markieren (Bearbeiten → Transferliste, oder „Preis“ bei Ladenhütern).
-- Filter „Gelistet“ in der Spielerliste; beim Verkaufen ist der Angebotspreis vorbelegt.
-
 ### Preisanpassung (Ladenhüter)
 - Offene Karten, die länger als **7 Tage** nicht verkauft sind, erscheinen in der Übersicht mit „Preis anpassen“.
-- **„Angepasst“** bestätigt die Anpassung (optional mit neuem Angebotspreis).
+- **„Angepasst“** bestätigt die Anpassung. Dabei kann der **aktuelle EK** (Marktpreis) eingetragen werden – daraus wird der
+  neue VK (EK + Aufschlag) berechnet. Der gespeicherte EK der Karte bleibt unverändert; der neue VK ist beim Verkaufen vorbelegt.
 - Ist die Karte **3 Tage** nach der Anpassung noch unverkauft, kommt sie nach dem Verkauf **nicht** auf die Einkaufsliste
   („kein Nachkauf“). Bei Bedarf: verkaufte Karte antippen → „Auf die Einkaufsliste setzen“. Beide Fristen unter Einstellungen.
 
@@ -134,7 +131,7 @@ Zeitraum wählbar (Heute / 7 Tage / 30 Tage / Gesamt):
 - Bester / schwächster Verkauf, „Am längsten im Club“ mit Ziel-VK und Verkaufen-Knopf
 
 ### Spielerliste
-Filter Offen / Gelistet / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),
+Filter Offen / Verkauft / Alle, Suche, Sortierung (Neueste, Gewinn, Rating, Preis, Haltedauer),
 **Zeitraum** (diese/letzte Woche, einzelne KW, Monate), Summenleiste.
 Antippen öffnet Bearbeiten (inkl. Verkauf rückgängig machen und Löschen).
 

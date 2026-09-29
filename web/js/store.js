@@ -67,7 +67,7 @@ async function firestoreBackend(config, depot) {
     if (c.restock) d.restock = c.restock; // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
     if (c.adjustedAt) d.priceAdjustedAt = ts(c.adjustedAt); // bestätigte Preisanpassung (Ladenhüter)
     if (c.targetVk) d.plannedSellPrice = c.targetVk;           // voraussichtlicher Angebotspreis (aus geplantem Kauf)
-    if (c.listPrice != null && c.vk == null) { d.listPrice = c.listPrice; d.listDate = ts(c.listDate || toISODate(new Date())); } // auf der Transferliste
+    if (c.marketEk && c.vk == null) d.currentMarketPrice = c.marketEk; // aktueller Markt-EK (nur Grundlage für neuen VK, EK bleibt)
     return d;
   };
   const cardFrom = (id, d) => (d.name && d.buyPrice != null && d.buyDate) ? {
@@ -75,7 +75,7 @@ async function firestoreBackend(config, depot) {
     vk: d.sellPrice ?? null, vkDate: d.sellPrice != null ? day(d.sellDate) || day(d.buyDate) : null,
     owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null,
     adjustedAt: day(d.priceAdjustedAt), targetVk: d.plannedSellPrice || null,
-    listPrice: d.sellPrice == null ? d.listPrice ?? null : null, listDate: d.sellPrice == null ? day(d.listDate) : null } : null;
+    marketEk: d.sellPrice == null ? d.currentMarketPrice || null : null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,
     ownTransferListValue: s.tlOwn, soldCards: s.sold, listedCards: s.listed, tradingProfit: s.profit, notes: s.notes || "" });
   const snapFrom = (id, d) => d.date ? { id, date: day(d.date), team: d.teamValue || 0, tl: d.transferListValue || 0,

@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -343,17 +343,17 @@ function staleState(c) {
 }
 const staleTag = c => ({ due: '<span class="tag alert">Preis anpassen</span>', slow: '<span class="tag alert">kein Nachkauf</span>',
   adjusted: '<span class="tag listed">angepasst</span>' })[staleState(c)] || "";
-function staleRow(c, attrs = { adjust: "data-adjust", list: "data-listp", sell: "data-sell" }) {
+function staleRow(c, attrs = { adjust: "data-adjust", sell: "data-sell" }) {
   const st = staleState(c), lock = cfg().lockDays;
   const left = c.adjustedAt ? lock - daysBetween(parseDay(c.adjustedAt), new Date()) : 0;
   const info = st === "due" ? `${heldSince(c.ekDate)} unverkauft – bitte Preis anpassen`
     : st === "adjusted" ? `angepasst am ${fmtShort(parseDay(c.adjustedAt))} · noch ${left} T bis „kein Nachkauf“`
     : `seit ${fmtShort(parseDay(c.adjustedAt))} angepasst, weiter unverkauft → wird nicht nachgekauft`;
   return `<div class="row" style="align-items:flex-start">${badge(c.rating, 1)}<div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div>
-      <div class="meta">EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.listPrice ? ` · gelistet ${fmt(c.listPrice)}` : ""}</div>
+      <div class="meta">EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.marketEk ? ` · akt. EK ${fmt(c.marketEk)}` : ""}${c.targetVk ? ` · neuer VK ${fmt(c.targetVk)}` : ""}</div>
       <div class="stat-line" style="${st === "due" || st === "slow" ? "color:var(--warn)" : ""}">${info}</div></div>
-    <div style="display:flex;flex-direction:column;gap:6px">${st === "due" ? `<button class="mini gold" ${attrs.adjust}="${c.id}">Angepasst</button>`
-      : `<button class="mini" ${attrs.list}="${c.id}">Preis</button>`}<button class="mini" ${attrs.sell}="${c.id}">VK</button></div></div>`;
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="mini ${st === "due" ? "gold" : ""}" ${attrs.adjust}="${c.id}">${st === "due" ? "Angepasst" : "Preis"}</button>
+      <button class="mini" ${attrs.sell}="${c.id}">VK</button></div></div>`;
 }
 function staleHtml() {
   const { staleDays, lockDays } = cfg(), list = I.staleCards(S.data.cards, staleDays);
@@ -366,30 +366,44 @@ function staleHtml() {
     <p class="hint" style="padding:0">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${lockDays} Tage danach noch nicht verkauft, kommt sie nach dem Verkauf nicht auf die Einkaufsliste.</p></section>`;
 }
 
-/// Preisanpassung bestätigen (optional mit neuem Angebotspreis)
+/// Preisanpassung bestätigen. Der aktuelle Markt-EK dient nur zur Berechnung des neuen VK – der EK der Karte bleibt unverändert.
 function openAdjust(card) {
-  const step = priceStep, start = card.listPrice || target(card.ek);
+  const step = priceStep;
+  const again = !!card.adjustedAt;
+  let vkTouched = !!card.targetVk;
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
       <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · ${heldSince(card.ekDate)} im Club</div></div></div></div>
-    <div class="group"><div class="gh">Neuer Angebotspreis (optional)</div>
-      <div class="field"><label for="a-p">Angebot</label><input id="a-p" inputmode="decimal" value="${start}"></div>
-      <div class="chips"><button type="button" class="chip" data-ap="-1">− Stufe</button><button type="button" class="chip" data-ap="-2">− 2 Stufen</button>
-        <button type="button" class="chip" data-av="${breakEven(card.ek)}">Break-even ${compact(breakEven(card.ek))}</button></div>
+    <div class="group"><div class="gh">Aktueller Marktpreis</div>
+      <div class="field"><label for="a-ek">Aktueller EK</label><input id="a-ek" inputmode="decimal" value="${card.marketEk || card.ek}"></div>
+      <p class="hint" style="padding:0 12px 10px">Nur Grundlage für den neuen VK – dein EK von ${fmt(card.ek)} bleibt gespeichert.</p></div>
+    <div class="group"><div class="gh">Neuer VK</div>
+      <div class="field"><label for="a-vk">Neuer VK</label><input id="a-vk" inputmode="decimal" value="${card.targetVk || target(card.marketEk || card.ek)}"></div>
+      <div class="chips"><button type="button" class="chip" data-av="calc">kalk. VK aus akt. EK</button><button type="button" class="chip" data-ap="-1">− Stufe</button>
+        <button type="button" class="chip" data-ap="1">+ Stufe</button><button type="button" class="chip" data-av="${breakEven(card.ek)}">Break-even ${compact(breakEven(card.ek))}</button></div>
       <div id="a-calc"></div></div>
-    <p class="hint">Mit „Bestätigen“ wird die Preisanpassung vermerkt. Ist ${esc(card.name)} ${cfg().lockDays} Tage danach noch nicht verkauft, kommt die Karte nach dem Verkauf <b>nicht</b> auf die Einkaufsliste.</p></div>`;
-  const refresh = sheet("Preisanpassung", body, "Bestätigen", () => {
-    const price = parseCoins($("a-p").value), today = toISODate(new Date());
-    S.saveCard({ ...card, adjustedAt: card.adjustedAt || today, ...(price ? { listPrice: price, listDate: today } : {}) });
-    closeSheet(); toast(`Preisanpassung für ${card.name} bestätigt`);
-  }, () => true);
-  const upd = () => { $("a-calc").innerHTML = calcHtml(card.ek, parseCoins($("a-p").value)); refresh(); };
+    <p class="hint">${again ? `Anpassung bestätigt am ${fmtShort(parseDay(card.adjustedAt))} – hier nur Preise aktualisieren.`
+      : `Mit „Bestätigen“ wird die Preisanpassung vermerkt. Ist ${esc(card.name)} ${cfg().lockDays} Tage danach noch nicht verkauft, kommt die Karte nach dem Verkauf <b>nicht</b> auf die Einkaufsliste.`}
+      Der neue VK ist beim Verkaufen vorbelegt.</p></div>`;
+  const refresh = sheet(again ? "Preis aktualisieren" : "Preisanpassung", body, again ? "Sichern" : "Bestätigen", () => {
+    const today = toISODate(new Date()), mEk = parseCoins($("a-ek").value), vk = parseCoins($("a-vk").value);
+    S.saveCard({ ...card, adjustedAt: card.adjustedAt || today, marketEk: mEk && mEk !== card.ek ? mEk : null, targetVk: vk || null });
+    closeSheet(); toast(again ? "Preis aktualisiert" : `Preisanpassung für ${card.name} bestätigt`);
+  }, () => parseCoins($("a-vk").value) > 0);
+  const upd = () => {
+    const mEk = parseCoins($("a-ek").value) || card.ek, vk = parseCoins($("a-vk").value);
+    $("a-calc").innerHTML = (calcHtml(card.ek, vk) || "") + (vk && mEk !== card.ek
+      ? `<div class="calc" style="padding-top:0"><div class="l"><span>Aufschlag auf akt. EK (${fmt(mEk)})</span><span class="num">${signed(vk - mEk)}</span></div></div>` : "");
+    refresh();
+  };
   layer.querySelector(".sheet").addEventListener("click", e => {
     const d = e.target.closest("[data-ap]"), v = e.target.closest("[data-av]");
-    if (d) { let p = parseCoins($("a-p").value) || start; for (let k = 0; k < -d.dataset.ap; k++) p = Math.max(150, p - step(p - 1)); $("a-p").value = p; upd(); }
-    if (v) { $("a-p").value = v.dataset.av; upd(); }
+    if (d) { const p = parseCoins($("a-vk").value) || target(card.ek); $("a-vk").value = Math.max(150, p + +d.dataset.ap * step(p + (+d.dataset.ap < 0 ? -1 : 0))); vkTouched = true; upd(); }
+    if (v) { $("a-vk").value = v.dataset.av === "calc" ? target(parseCoins($("a-ek").value) || card.ek) : v.dataset.av; vkTouched = v.dataset.av !== "calc"; upd(); }
   });
-  $("a-p").addEventListener("input", upd);
+  // Aktuellen EK ändern → neuer VK = EK + Aufschlag (solange der VK nicht von Hand gesetzt wurde)
+  $("a-ek").addEventListener("input", () => { if (!vkTouched) $("a-vk").value = target(parseCoins($("a-ek").value) || card.ek); upd(); });
+  $("a-vk").addEventListener("input", () => { vkTouched = true; upd(); });
   upd();
 }
 
@@ -511,15 +525,15 @@ function listHtml() {
   // Zeitraum: Verkaufte nach Verkaufsdatum, offene nach Kaufdatum
   const inR = c => I.inRange(c.vkDate || c.ekDate, ui.range);
   const pool = cards.filter(inR);
-  const counts = { open: pool.filter(c => !isSold(c)).length, listed: pool.filter(c => !isSold(c) && c.listPrice).length,
+  const counts = { open: pool.filter(c => !isSold(c)).length,
     sold: pool.filter(isSold).length, all: pool.length };
-  const list = pool.filter(c => ui.filter === "all" || (ui.filter === "listed" ? !isSold(c) && c.listPrice : (ui.filter === "open") !== isSold(c)))
+  const list = pool.filter(c => ui.filter === "all" || (ui.filter === "open") !== isSold(c))
     .filter(c => !ui.q || (c.name + " " + c.chem).toLowerCase().includes(ui.q.toLowerCase()));
   const key = { newest: c => -parseDay(c.vkDate || c.ekDate), profit: c => isSold(c) ? -profitOf(c.ek, c.vk) : 1e12,
     rating: c => -c.rating, price: c => -c.ek, hold: c => -daysBetween(parseDay(c.ekDate), parseDay(c.vkDate || today)) };
   list.sort((a, b) => key[ui.sort](a) - key[ui.sort](b));
   const shown = list.slice(0, 200);
-  return `${seg([["open", `Offen ${counts.open}`], ["listed", `Gelistet ${counts.listed}`], ["sold", `Verkauft ${counts.sold}`], ["all", `Alle ${counts.all}`]], ui.filter, "filter")}
+  return `${seg([["open", `Offen (${counts.open})`], ["sold", `Verkauft (${counts.sold})`], ["all", `Alle (${counts.all})`]], ui.filter, "filter")}
     <div class="search"><input id="q" type="search" placeholder="Spieler oder Chemistry Style" value="${esc(ui.q)}" aria-label="Suchen">
       <select id="sort" aria-label="Sortierung">${[["newest", "Neueste"], ["profit", "Gewinn"], ["rating", "Rating"], ["price", "Preis"], ["hold", "Haltedauer"]]
         .map(([k, l]) => `<option value="${k}" ${k === ui.sort ? "selected" : ""}>${l}</option>`).join("")}</select></div>
@@ -527,13 +541,13 @@ function listHtml() {
     <div class="list">${shown.map(c => {
       const p = isSold(c) ? profitOf(c.ek, c.vk) : null;
       return `<div class="item" tabindex="0" data-edit="${c.id}">${badge(c.rating)}
-        <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${!isSold(c) && c.listPrice ? `<span class="tag listed">gelistet ${compact(c.listPrice)}</span>` : ""}${staleTag(c)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
+        <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${staleTag(c)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
         <div class="right">${p != null ? `${profitHtml(p)}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div>`
           : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">${c.targetVk ? `Angebot ~${compact(c.targetVk)}` : `kalk. VK ${compact(target(c.ek))}`} · ${heldSince(c.ekDate)}</div>`}</div>
         ${p == null ? `<button class="mini gold" data-sell="${c.id}">VK</button>` : ""}</div>`;
     }).join("") || '<div class="empty">Keine Spieler gefunden.</div>'}</div>
     ${list.length > shown.length ? `<div class="hint">Die ersten ${shown.length} von ${list.length}. Suche oder Filter grenzt weiter ein.</div>` : ""}
-    ${list.length ? `<div class="sumbar"><span>${list.length} Spieler</span><span class="num">${ui.filter === "open" || ui.filter === "listed"
+    ${list.length ? `<div class="sumbar"><span>${list.length} Spieler</span><span class="num">${ui.filter === "open"
       ? `EK ${compact(sum(list.map(c => c.ek)))} · kalk. VK ${compact(sum(list.map(c => target(c.ek))))}`
       : `Gewinn ${profitHtml(sum(list.filter(isSold).map(c => profitOf(c.ek, c.vk))))}`}</span></div>` : ""}`;
 }
@@ -747,7 +761,6 @@ function onViewClick(e) {
   const wk = t.closest("[data-week]"); if (wk) { ui.wsel = +wk.dataset.week; return render(); }
   const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("fct-dim", ui.dim); return render(); }
   const adj = t.closest("[data-adjust]"); if (adj) { e.stopPropagation(); return openAdjust(S.data.cards.find(c => c.id === adj.dataset.adjust)); }
-  const lp = t.closest("[data-listp]"); if (lp) { e.stopPropagation(); return openList(S.data.cards.find(c => c.id === lp.dataset.listp)); }
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
   const wi = t.closest("[data-wish]"); if (wi) return openWish(S.data.wishes.find(w => w.id === wi.dataset.wish));
@@ -825,9 +838,6 @@ function openAdd(existing) {
       <div class="field"><label for="f-vk">Verkaufspreis</label><input id="f-vk" inputmode="decimal" value="${c.vk ?? ""}" placeholder="noch offen"></div>
       <div class="field"><label for="f-vkd">Verkaufsdatum</label><input id="f-vkd" type="date" value="${c.vkDate || toISODate(new Date())}"></div>
       <div id="f-calc-sell"></div></div>` : ""}
-    ${existing && !isSold(existing) ? `<div class="group"><div class="gh">Transferliste</div>
-      <div class="field"><label>Angebot</label><span class="grow" style="text-align:right">${existing.listPrice ? `${fmt(existing.listPrice)} seit ${fmtShort(parseDay(existing.listDate || existing.ekDate))}` : "nicht gelistet"}</span>
-      <button type="button" class="mini" id="f-list">${existing.listPrice ? "Ändern" : "Listen"}</button></div></div>` : ""}
     <div class="group"><div class="field"><label for="f-notes">Notiz</label><textarea id="f-notes" rows="1" placeholder="optional">${esc(c.notes || "")}</textarea></div></div>
     ${existing && isSold(existing) && !onRestock(existing) ? `<button type="button" class="mini" id="f-restock" style="align-self:flex-start">Auf die Einkaufsliste setzen</button>` : ""}
     ${existing ? `<button type="button" class="mini" id="f-del" style="align-self:flex-start;color:var(--bad)">Eintrag löschen</button>`
@@ -854,7 +864,7 @@ function openAdd(existing) {
     if (existing) {
       const vk = parseCoins($("f-vk").value); card.vk = vk || null; card.vkDate = vk ? ($("f-vkd").value || toISODate(new Date())) : null;
       if (vk && !existing.vk) card.restock = "open"; // hier verkauft → auf die Einkaufsliste
-      if (vk) { card.listPrice = null; card.listDate = null; }
+      if (vk) card.marketEk = null;
       if (!vk) card.restock = null;                  // Verkauf entfernt → von der Liste
     }
     else { card.vk = null; card.vkDate = null; }
@@ -867,7 +877,6 @@ function openAdd(existing) {
     if (t.dataset.chem) $("f-chem").value = t.dataset.chem;
     if (t.dataset.app) { $("f-ek").value += t.dataset.app; $("f-ek").focus(); }
     if (t.id === "f-next") { save(); toast("Gespeichert – nächste Karte"); ["f-name", "f-rating", "f-ek", "f-notes"].forEach(i => $(i).value = ""); $("f-name").focus(); }
-    if (t.id === "f-list") return openList(existing);
     if (t.id === "f-restock") { S.saveCard({ ...existing, restock: "manual" }); closeSheet(); return toast(`${existing.name} steht auf der Einkaufsliste`); }
     if (t.id === "f-del") return confirmButton(t, "Wirklich löschen?", () => { S.deleteCard(existing.id); closeSheet(); toast("Gelöscht"); });
     update();
@@ -878,7 +887,7 @@ function openAdd(existing) {
   update();
 }
 
-function openSell(card, presetPrice = card.listPrice ?? card.targetVk) {
+function openSell(card, presetPrice = card.targetVk) {
   const chips = [["ziel", "kalk. VK " + compact(target(card.ek))], ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
@@ -891,7 +900,7 @@ function openSell(card, presetPrice = card.listPrice ?? card.targetVk) {
     <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
-    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), restock: "open", listPrice: null, listDate: null });
+    S.saveCard({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), restock: "open", marketEk: null });
     const date = $("s-date").value || toISODate(new Date());
     closeSheet(); toast("Verkauft: " + signed(profitOf(card.ek, vk)) + (slowSeller({ ...card, vkDate: date }) ? " · Ladenhüter, kein Nachkauf" : ""));
   }, () => parseCoins($("s-vk").value) > 0);
@@ -933,35 +942,6 @@ function openSnap(existing) {
   upd();
 }
 
-function openList(card) {
-  const step = priceStep, start = card.listPrice || card.targetVk || target(card.ek);
-  const body = `<div class="form">
-    <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
-      <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · seit ${heldSince(card.ekDate)}</div></div></div></div>
-    <div class="group"><div class="gh">Sofortkauf-Preis</div>
-      <div class="field"><label for="l-p">Angebot</label><input id="l-p" inputmode="decimal" value="${start}"></div>
-      <div class="chips"><button type="button" class="chip" data-lp="-1">− Stufe</button><button type="button" class="chip" data-lp="1">+ Stufe</button>
-        <button type="button" class="chip" data-lv="${target(card.ek)}">kalk. VK ${compact(target(card.ek))}</button>
-        <button type="button" class="chip" data-lv="${breakEven(card.ek)}">Break-even ${compact(breakEven(card.ek))}</button></div>
-      <div id="l-calc"></div></div>
-    ${card.listPrice ? '<button type="button" class="mini" id="l-off" style="align-self:flex-start">Nicht mehr gelistet</button>' : ""}
-    <p class="hint">Markiert die Karte als „gelistet“. Beim Verkaufen ist der Preis dann schon eingetragen.</p></div>`;
-  const refresh = sheet(card.listPrice ? "Angebot ändern" : "Auf Transferliste", body, "Gelistet", () => {
-    const price = parseCoins($("l-p").value);
-    S.saveCard({ ...card, listPrice: price, listDate: toISODate(new Date()) });
-    closeSheet(); toast(`${card.name} gelistet für ${fmt(price)}`);
-  }, () => parseCoins($("l-p").value) > 0);
-  const upd = () => { $("l-calc").innerHTML = calcHtml(card.ek, parseCoins($("l-p").value)); refresh(); };
-  layer.querySelector(".sheet").addEventListener("click", e => {
-    const d = e.target.closest("[data-lp]"), v = e.target.closest("[data-lv]");
-    if (d) { const p = parseCoins($("l-p").value) || start; $("l-p").value = Math.max(150, p + +d.dataset.lp * step(p + (+d.dataset.lp < 0 ? -1 : 0))); upd(); }
-    if (v) { $("l-p").value = v.dataset.lv; upd(); }
-    if (e.target.id === "l-off") { S.saveCard({ ...card, listPrice: null, listDate: null }); closeSheet(); toast("Nicht mehr gelistet"); }
-  });
-  $("l-p").addEventListener("input", upd);
-  upd();
-}
-
 function openGoal() {
   const body = `<div class="form"><div class="group">
     <div class="field"><label for="g-v">Gewinn pro Woche</label><input id="g-v" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="z. B. 50k"></div></div>
@@ -973,11 +953,10 @@ function openGoal() {
 
 function openStale() {
   const list = I.staleCards(S.data.cards, cfg().staleDays);
-  sheet(`Ladenhüter (${list.length})`, `<div class="form"><div class="card">${list.map(c => staleRow(c, { adjust: "data-sadj", list: "data-slist", sell: "data-ssell" })).join('<div class="divider"></div>')}</div></div>`);
+  sheet(`Ladenhüter (${list.length})`, `<div class="form"><div class="card">${list.map(c => staleRow(c, { adjust: "data-sadj", sell: "data-ssell" })).join('<div class="divider"></div>')}</div></div>`);
   layer.querySelector(".sheet").addEventListener("click", e => {
-    const a = e.target.closest("[data-sadj]"), l = e.target.closest("[data-slist]"), v = e.target.closest("[data-ssell]");
+    const a = e.target.closest("[data-sadj]"), v = e.target.closest("[data-ssell]");
     if (a) openAdjust(S.data.cards.find(c => c.id === a.dataset.sadj));
-    if (l) openList(S.data.cards.find(c => c.id === l.dataset.slist));
     if (v) openSell(S.data.cards.find(c => c.id === v.dataset.ssell));
   });
 }
@@ -1186,7 +1165,7 @@ function openBulkSell(items) {
   const refresh = sheet(drafts.length === 1 ? "Verkauf prüfen" : `${drafts.length} Verkäufe prüfen`, body, "Verbuchen", () => {
     const date = $("v-date").value || toISODate(new Date());
     let total = 0;
-    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, restock: "open", listPrice: null, listDate: null }); }
+    for (const d of ready()) { const c = cardOf(d), vk = parseCoins(d.price); total += profitOf(c.ek, vk); S.saveCard({ ...c, vk, vkDate: date, restock: "open", marketEk: null }); }
     closeSheet(); toast(`Verbucht · Gewinn ${signed(total)}`);
   }, () => ready().length > 0);
   $("v-list").addEventListener("input", e => {
