@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.8.2";
+const VERSION = "1.9.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -601,6 +601,51 @@ function lineChart(items, selIdx, attr, label) {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${grid}<path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>${pts}</svg>`;
 }
 
+/// Verkäufe einer Karte (gleicher Spieler & Rating) und ihr durchschnittlicher VK
+const cardKey = c => `${nameKey(c.name)}|${c.rating}`;
+const salesOf = (name, rating) => S.data.cards.filter(c => isSold(c) && cardKey(c) === cardKey({ name, rating }));
+const avgVk = (name, rating) => { const s = salesOf(name, rating); return s.length ? Math.round(sum(s.map(c => c.vk)) / s.length) : null; };
+const holdOf = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate));
+
+/// Verkauft-Tab: alle Verkäufe einer Karte zu einer Zeile zusammengefasst
+function soldGroupsHtml(list) {
+  const groups = new Map();
+  for (const c of list) { const k = cardKey(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
+  const gs = [...groups.entries()].map(([key, items]) => {
+    items.sort((a, b) => b.vkDate.localeCompare(a.vkDate) || (b.soldAt || 0) - (a.soldAt || 0));
+    return { key, items, name: items[0].name, rating: items[0].rating, last: items[0].vkDate,
+      profit: sum(items.map(c => profitOf(c.ek, c.vk))), avgEk: sum(items.map(c => c.ek)) / items.length,
+      avgVk: Math.round(sum(items.map(c => c.vk)) / items.length), hold: sum(items.map(holdOf)) / items.length };
+  });
+  const key = { newest: g => -parseDay(g.last), profit: g => -g.profit, rating: g => -g.rating, price: g => -g.avgEk, hold: g => -g.hold };
+  gs.sort((a, b) => key[ui.sort](a) - key[ui.sort](b) || a.name.localeCompare(b.name));
+  return gs.map(g => `<div class="item" tabindex="0" data-sgroup="${esc(g.key)}">${badge(g.rating)}
+      <div class="grow" style="min-width:0"><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}</div>
+        <div class="meta">${g.items.length > 1 ? `${g.items.length} Verkäufe · zuletzt ` : `${esc(g.items[0].chem)} · `}${fmtDate(parseDay(g.last))}</div></div>
+      <div class="right">${profitHtml(g.profit)}<div class="meta num">Ø VK ${compact(g.avgVk)}</div></div></div>`).join("");
+}
+function openSoldGroup(key) {
+  const items = S.data.cards.filter(c => isSold(c) && cardKey(c) === key)
+    .sort((a, b) => b.vkDate.localeCompare(a.vkDate) || (b.soldAt || 0) - (a.soldAt || 0));
+  if (!items.length) return;
+  const n = items.length, profit = sum(items.map(c => profitOf(c.ek, c.vk)));
+  const body = `<div class="form">
+    <div class="group"><div class="field" style="border:0">${badge(items[0].rating)}<div class="grow" style="min-width:0"><div class="name">${esc(items[0].name)}</div>
+      <div class="meta">${n} ${n === 1 ? "Verkauf" : "Verkäufe"} · Gewinn ${profitHtml(profit)}</div></div></div></div>
+    <section class="tiles">
+      <div class="tile"><div class="t">Ø VK</div><div class="v num">${fmt(Math.round(sum(items.map(c => c.vk)) / n))}</div><div class="d">Ø EK ${fmt(Math.round(sum(items.map(c => c.ek)) / n))}</div></div>
+      <div class="tile"><div class="t">Ø Gewinn</div><div class="v num">${signed(Math.round(profit / n))}</div><div class="d">Ø ${holdText(sum(items.map(holdOf)) / n)} gehalten</div></div></section>
+    <div class="list">${items.map(c => `<div class="item" tabindex="0" data-edit="${c.id}">
+      <div class="grow" style="min-width:0"><div class="name" style="font-size:14px">${fmtDate(parseDay(c.vkDate))}</div>
+        <div class="meta">${esc(c.chem)} · ${holdText(holdOf(c))} gehalten</div></div>
+      <div class="right">${profitHtml(profitOf(c.ek, c.vk))}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div></div></div>`).join("")}</div>
+    <p class="hint">Einen Verkauf antippen, um ihn zu bearbeiten.</p></div>`;
+  sheet(items[0].name, body);
+  layer.querySelector(".sheet").addEventListener("click", e => {
+    const ed = e.target.closest("[data-edit]"); if (ed) openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
+  });
+}
+
 function listHtml() {
   const cards = S.data.cards;
   const today = toISODate(new Date());
@@ -620,16 +665,16 @@ function listHtml() {
       <select id="sort" aria-label="Sortierung">${[["newest", "Neueste"], ["profit", "Gewinn"], ["rating", "Rating"], ["price", "Preis"], ["hold", "Haltedauer"]]
         .map(([k, l]) => `<option value="${k}" ${k === ui.sort ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     <select id="range" class="range" aria-label="Zeitraum">${I.ranges(cards).map(([k, l]) => `<option value="${k}" ${k === ui.range ? "selected" : ""}>${l}</option>`).join("")}</select>
-    <div class="list">${shown.map(c => {
+    <div class="list">${ui.filter === "sold" ? soldGroupsHtml(list) || '<div class="empty">Keine Spieler gefunden.</div>' : shown.map(c => {
       const p = isSold(c) ? profitOf(c.ek, c.vk) : null;
       return `<div class="item" tabindex="0" data-edit="${c.id}">${badge(c.rating)}
         <div class="grow" style="min-width:0"><div class="name">${esc(c.name)}${staleTag(c)}</div><div class="meta">${esc(c.chem)} · ${fmtDate(parseDay(isSold(c) ? c.vkDate : c.ekDate))}</div></div>
         <div class="right">${p != null ? `${profitHtml(p)}<div class="meta num">${compact(c.ek)} → ${compact(c.vk)}</div>`
-          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">${c.targetVk ? `Angebot ~${compact(c.targetVk)}` : `kalk. VK ${compact(target(c.ek))}`} · ${heldSince(c.ekDate)}</div>`}</div>
+          : `<div class="num" style="font-weight:700">${fmt(c.ek)}</div><div class="meta num">${c.targetVk ? `Angebot ~${compact(c.targetVk)}` : `kalk. VK ${compact(target(c.ek))}`} · ${heldSince(c.ekDate)}</div>${(av => av ? `<div class="meta num">Ø VK ${compact(av)}</div>` : "")(avgVk(c.name, c.rating))}`}</div>
         ${p == null ? `<button class="mini gold" data-sell="${c.id}">VK</button>` : ""}</div>`;
     }).join("") || '<div class="empty">Keine Spieler gefunden.</div>'}</div>
-    ${list.length > shown.length ? `<div class="hint">Die ersten ${shown.length} von ${list.length}. Suche oder Filter grenzt weiter ein.</div>` : ""}
-    ${list.length ? `<div class="sumbar"><span>${list.length} Spieler</span><span class="num">${ui.filter === "open"
+    ${ui.filter !== "sold" && list.length > shown.length ? `<div class="hint">Die ersten ${shown.length} von ${list.length}. Suche oder Filter grenzt weiter ein.</div>` : ""}
+    ${list.length ? `<div class="sumbar"><span>${ui.filter === "sold" ? `${list.length} Verkäufe` : `${list.length} Spieler`}</span><span class="num">${ui.filter === "open"
       ? `EK ${compact(sum(list.map(c => c.ek)))} · kalk. VK ${compact(sum(list.map(c => target(c.ek))))}`
       : `Gewinn ${profitHtml(sum(list.filter(isSold).map(c => profitOf(c.ek, c.vk))))}`}</span></div>` : ""}`;
 }
@@ -863,6 +908,7 @@ function onViewClick(e) {
   const wk = t.closest("[data-week]"); if (wk) { ui.wsel = +wk.dataset.week; return render(); }
   const dm = t.closest("[data-dim]"); if (dm) { ui.dim = dm.dataset.dim; LS.set("fct-dim", ui.dim); return render(); }
   const adj = t.closest("[data-adjust]"); if (adj) { e.stopPropagation(); return openAdjust(S.data.cards.find(c => c.id === adj.dataset.adjust)); }
+  const sg = t.closest("[data-sgroup]"); if (sg) return openSoldGroup(sg.dataset.sgroup);
   const ed = t.closest("[data-edit]"); if (ed) return openAdd(S.data.cards.find(c => c.id === ed.dataset.edit));
   const sn = t.closest("[data-snap]"); if (sn) return openSnap(S.data.snaps.find(s => s.id === sn.dataset.snap));
   const wi = t.closest("[data-wish]"); if (wi) return openWish(S.data.wishes.find(w => w.id === wi.dataset.wish));
@@ -993,7 +1039,8 @@ function openAdd(existing) {
 }
 
 function openSell(card, presetPrice = card.targetVk) {
-  const chips = [["ziel", "kalk. VK " + compact(target(card.ek))], ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
+  const av = avgVk(card.name, card.rating);
+  const chips = [["ziel", "kalk. VK " + compact(target(card.ek))], ...(av ? [["avg", "Ø VK " + compact(av)]] : []), ["0", "Break-even"], ["0.1", "+10 %"], ["0.2", "+20 %"]];
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}</div>
       <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · ${fmtDate(parseDay(card.ekDate))}</div></div></div></div>
@@ -1002,7 +1049,7 @@ function openSell(card, presetPrice = card.targetVk) {
       <div class="chips">${chips.map(([k, l]) => `<button type="button" class="chip" data-m="${k}">${l}</button>`).join("")}<button type="button" class="chip" data-app="000">+000</button></div>
       <div class="field"><label for="s-date">Verkaufsdatum</label><input id="s-date" type="date" value="${toISODate(new Date())}"></div></div>
     <div class="group"><div class="gh">Abrechnung</div><div id="s-calc"></div></div>
-    <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
+    <p class="hint">kalk. VK = kalkulierter VK laut eurer Aufschlagstabelle. Ø VK = Durchschnitt eurer bisherigen Verkäufe dieser Karte (gleicher Spieler & Rating). Die %-Chips setzen den Preis, der nach 5 % Tax die Marge bringt.</p></div>`;
   const refresh = sheet("Verkaufen", body, "Verkauft", () => {
     const vk = parseCoins($("s-vk").value);
     const plan = saveSale({ ...card, vk, vkDate: $("s-date").value || toISODate(new Date()), soldAt: Date.now(), restock: "open", marketEk: null });
@@ -1012,7 +1059,7 @@ function openSell(card, presetPrice = card.targetVk) {
   const upd = () => { $("s-calc").innerHTML = calcHtml(card.ek, parseCoins($("s-vk").value)) || '<div class="calc"><div class="l">Preis eingeben</div></div>'; refresh(); };
   layer.querySelector(".sheet").addEventListener("click", e => {
     const m = e.target.closest("[data-m]"), a = e.target.closest("[data-app]");
-    if (m) $("s-vk").value = m.dataset.m === "ziel" ? target(card.ek) : breakEven(card.ek, +m.dataset.m);
+    if (m) $("s-vk").value = m.dataset.m === "ziel" ? target(card.ek) : m.dataset.m === "avg" ? Math.round(av / priceStep(av)) * priceStep(av) : breakEven(card.ek, +m.dataset.m);
     if (a) $("s-vk").value += a.dataset.app;
     if (m || a) upd();
   });
