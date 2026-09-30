@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.10.0";
+const VERSION = "1.10.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -167,14 +167,15 @@ const wishGroups = () => { const slots = wishSlots(); return sortedWishes().map(
   key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, special: !!w.special, lastEk: w.price, lastVk: null, soldOn: null,
   items: Array(w.qty || 1).fill(w), replaces: slots.get(w.id) || [] })); };
 const allBuyGroups = () => [...restockGroups(), ...wishGroups()];
-/// Drehungen (Verkäufe) der letzten 7 Tage je Spieler + Rating; Tag 1 = heute. Nur gelesen, nichts wird geändert.
+const TURN_DAYS = 10;
+/// Drehungen (Verkäufe) der letzten TURN_DAYS Tage je Spieler + Rating; Tag 1 = heute. Nur gelesen, nichts wird geändert.
 function turnover(name, rating, special) {
   const mine = S.data.cards.filter(c => sameName(c.name, name) && (!rating || c.rating === +rating) && !!c.special === !!special), today = new Date();
-  const days = mine.filter(isSold).map(c => daysBetween(parseDay(c.vkDate), today) + 1).filter(d => d >= 1 && d <= 7);
+  const days = mine.filter(isSold).map(c => daysBetween(parseDay(c.vkDate), today) + 1).filter(d => d >= 1 && d <= TURN_DAYS);
   return { n: days.length, day: days.length ? Math.min(...days) : null, known: mine.length > 0 };
 }
-/// Rang auf der Einkaufsliste: oft gedreht → 1× in Tag 1–3 → neue Spieler → 1× in Tag 4–7 → länger nicht gedreht
-const turnRank = t => t.n >= 2 ? 0 : t.n === 1 && t.day <= 3 ? 1 : !t.known ? 2 : t.n === 1 ? 3 : 4;
+/// Rang auf der Einkaufsliste: mehrfach gedreht → neue Spieler → 1× gedreht → länger nicht gedreht (jeweils in TURN_DAYS Tagen)
+const turnRank = t => t.n >= 2 ? 0 : !t.known ? 1 : t.n === 1 ? 2 : 3;
 const addedAt = g => g.wish ? g.wish.createdAt || 0 : g.since;
 function sortedBuyGroups() {
   const gs = allBuyGroups(); gs.forEach(g => { g.turn = turnover(g.name, g.rating, g.special); });
@@ -187,8 +188,8 @@ function tlTag(g) {
   const info = act.map(c => `${c.chem}, EK ${fmt(c.ek)}`).join(" · ");
   return `<span class="tag tl" title="Noch aktiv: ${esc(info)}">TL${act.length > 1 ? " ×" + act.length : ""}</span>`;
 }
-const turnText = t => t.n >= 2 ? `<b>${t.n}× gedreht</b> in 7 Tagen` : t.n === 1 ? `1× gedreht in 7 Tagen (Tag ${t.day})`
-  : t.known ? "in 7 Tagen nicht gedreht" : "<b>neuer Spieler</b> – noch nie gekauft";
+const turnText = t => t.n >= 2 ? `<b>${t.n}× gedreht</b> in ${TURN_DAYS} Tagen` : t.n === 1 ? `1× gedreht in ${TURN_DAYS} Tagen (Tag ${t.day})`
+  : t.known ? `in ${TURN_DAYS} Tagen nicht gedreht` : "<b>neuer Spieler</b> – noch nie gekauft";
 const openBuyCount = () => restockOpen().length + sum(sortedWishes().map(w => w.qty || 1));
 /// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen; ersetzte Ladenhüter sind damit erledigt
 function useWish(w, n = 1) {
@@ -724,13 +725,13 @@ function buyHtml() {
   return `<section class="tiles">
       <div class="tile"><div class="t">Einkaufsliste</div><div class="v num">${count + pcount}</div><div class="d">${count} Nachkauf · ${pcount} Ersatz</div></div>
       <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">inkl. ${pcount} Ersatzspieler</div></div></section>
-    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Einkaufsliste</h2><span class="hint">nach Drehungen (7 Tage)</span></div>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Einkaufsliste</h2><span class="hint">nach Drehungen (${TURN_DAYS} Tage)</span></div>
       ${freeSlots > usedSlots ? `<div class="warn" style="padding:0 14px 10px">${freeSlots - usedSlots} Ladenhüter ohne Ersatz – plane weitere Spieler.</div>` : ""}
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${groups.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
     ${addBtn}
     ${watchHtml}
-    <p class="hint">Reihenfolge: Karten, die sich in den letzten 7 Tagen am häufigsten gedreht haben, oben. Dann Karten mit 1 Drehung in Tag 1–3, dann neue Spieler (noch nie gekauft),
-      dann Karten mit 1 Drehung in Tag 4–7, ganz unten Karten ohne Drehung in 7 Tagen. Bei Gleichstand steht der ältere Eintrag oben.
+    <p class="hint">Reihenfolge: Karten, die sich in den letzten ${TURN_DAYS} Tagen mehrfach gedreht haben (die häufigste oben), dann neue Spieler (noch nie gekauft),
+      dann Karten mit nur 1 Drehung in ${TURN_DAYS} Tagen, ganz unten Karten ohne Drehung in ${TURN_DAYS} Tagen. Bei Gleichstand steht der ältere Eintrag oben.
       Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch geplante Spieler („geplant“) ersetzt – der älteste Plan zuerst.
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       <b>Lila</b> Rating = Special-Karte (Special und Gold desselben Spielers werden getrennt gezählt).
