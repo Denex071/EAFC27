@@ -63,10 +63,11 @@ async function firestoreBackend(config, depot) {
   const cardTo = c => {
     const d = { name: c.name, rating: c.rating, chemistryStyle: c.chem, buyPrice: c.ek, buyDate: ts(c.ekDate),
       owner: c.owner || "", notes: c.notes || "", createdAt: fb.Timestamp.fromMillis(c.createdAt || Date.now()) };
+    if (c.special) d.special = true; // Special-Karte (sonst Gold)
     if (c.vk != null) { d.sellPrice = c.vk; d.sellDate = ts(c.vkDate); }
     if (c.vk != null && c.soldAt) d.soldAt = fb.Timestamp.fromMillis(c.soldAt); // genauer Verkaufszeitpunkt (Reihenfolge Einkaufsliste)
     if (c.restock) d.restock = c.restock;
-    if (c.plan && c.vk != null) d.restockPlan = { name: c.plan.name, rating: c.plan.rating, chemistryStyle: c.plan.chem, buyPrice: c.plan.ek, offer: c.plan.offer || null }; // Nachkauf mit Daten des Ersatzspielers // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
+    if (c.plan && c.vk != null) d.restockPlan = { name: c.plan.name, rating: c.plan.rating, chemistryStyle: c.plan.chem, buyPrice: c.plan.ek, offer: c.plan.offer || null, special: !!c.plan.special }; // Nachkauf mit Daten des Ersatzspielers // Einkaufsliste: "open", "done" (nachgekauft) oder "skip" (übersprungen)
     if (c.adjustedAt) d.priceAdjustedAt = ts(c.adjustedAt); // bestätigte Preisanpassung (Ladenhüter)
     if (c.targetVk) d.plannedSellPrice = c.targetVk;           // voraussichtlicher Angebotspreis (aus geplantem Kauf)
     if (c.marketEk && c.vk == null) d.currentMarketPrice = c.marketEk; // aktueller Markt-EK (nur Grundlage für neuen VK, EK bleibt)
@@ -78,7 +79,8 @@ async function firestoreBackend(config, depot) {
     owner: d.owner || "", notes: d.notes || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0, restock: d.restock || null,
     soldAt: d.sellPrice != null && d.soldAt ? d.soldAt.toMillis() : null,
     plan: d.sellPrice != null && d.restockPlan ? { name: d.restockPlan.name, rating: d.restockPlan.rating, chem: d.restockPlan.chemistryStyle,
-      ek: d.restockPlan.buyPrice, offer: d.restockPlan.offer || null } : null,
+      ek: d.restockPlan.buyPrice, offer: d.restockPlan.offer || null, special: !!d.restockPlan.special } : null,
+    special: !!d.special,
     adjustedAt: day(d.priceAdjustedAt), targetVk: d.plannedSellPrice || null,
     marketEk: d.sellPrice == null ? d.currentMarketPrice || null : null } : null;
   const snapTo = s => ({ date: ts(s.date), teamValue: s.team, transferListValue: s.tl, coins: s.coins,
@@ -87,10 +89,10 @@ async function firestoreBackend(config, depot) {
     coins: d.coins || 0, tlOwn: d.ownTransferListValue || 0, sold: d.soldCards || 0, listed: d.listedCards || 0,
     profit: d.tradingProfit || 0, notes: d.notes || "" } : null;
 
-  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price || 0, qty: w.qty || 1, offer: w.offer || null, list: w.list || "buy",
+  const wishTo = w => ({ name: w.name, rating: w.rating, chemistryStyle: w.chem, price: w.price || 0, qty: w.qty || 1, offer: w.offer || null, list: w.list || "buy", special: !!w.special,
     owner: w.owner || "", createdAt: fb.Timestamp.fromMillis(w.createdAt || Date.now()) });
   const wishFrom = (id, d) => d.name ? { id, name: d.name, rating: d.rating || 0, chem: d.chemistryStyle || "Basic", price: d.price || 0,
-    qty: d.qty || 1, offer: d.offer || null, list: d.list || "buy", owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
+    qty: d.qty || 1, offer: d.offer || null, list: d.list || "buy", special: !!d.special, owner: d.owner || "", createdAt: d.createdAt ? d.createdAt.toMillis() : 0 } : null;
   const onErr = e => { data.error = e.message; emit(); };
   const unsubs = [
     // Mit Metadaten: zeigt, ob Änderungen noch nicht bei der Cloud angekommen sind (offline / Verbindung gestört)

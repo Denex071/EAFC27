@@ -14,9 +14,9 @@ export const DEFAULTS = { weeklyGoal: 0, minProfit: 300, staleDays: 7, lockDays:
 // ---------- Nachkauf-Bewertung ----------
 
 /// Bisherige Flips einer Karte (gleicher Name & Rating; gleicher Stil, wenn davon genug da sind).
-export function flipStats(cards, name, rating, chem, minProfit = DEFAULTS.minProfit) {
+export function flipStats(cards, name, rating, chem, minProfit = DEFAULTS.minProfit, special = false) {
   const key = nameKey(name);
-  const all = cards.filter(c => isSold(c) && c.rating === rating && nameKey(c.name) === key);
+  const all = cards.filter(c => isSold(c) && c.rating === rating && !!c.special === !!special && nameKey(c.name) === key);
   const same = all.filter(c => c.chem === chem);
   const flips = (same.length >= 2 ? same : all).sort((a, b) => a.vkDate.localeCompare(b.vkDate));
   if (!flips.length) return null;
@@ -59,8 +59,9 @@ function groupRows(sold, keyOf, labelOf, order) {
   }).sort(order);
 }
 
-/// dim: "price" | "chem" | "rating" | "weekday"
+/// dim: "price" | "chem" | "rating" | "weekday" | "kind"
 export function breakdown(sold, dim) {
+  if (dim === "kind") return groupRows(sold, c => c.special ? 1 : 0, k => k ? "Special" : "Gold", (a, b) => a.key - b.key);
   if (dim === "price") {
     const idx = c => PRICE_CLASSES.findIndex(p => c.ek <= p[0]);
     return groupRows(sold, idx, i => PRICE_CLASSES[i][1], (a, b) => a.key - b.key);
@@ -81,8 +82,8 @@ export function lossStats(sold) {
   const losses = rows.filter(r => r.p < 0);
   const byName = new Map();
   for (const r of losses) {
-    const k = nameKey(r.c.name) + "|" + r.c.rating;
-    const g = byName.get(k) || { name: r.c.name, rating: r.c.rating, n: 0, loss: 0 };
+    const k = nameKey(r.c.name) + "|" + r.c.rating + "|" + !!r.c.special;
+    const g = byName.get(k) || { name: r.c.name, rating: r.c.rating, special: !!r.c.special, n: 0, loss: 0 };
     g.n++; g.loss += r.p; byName.set(k, g);
   }
   return { n: losses.length, share: sold.length ? losses.length / sold.length : 0, sum: sum(losses.map(r => r.p)),

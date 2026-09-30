@@ -12,6 +12,7 @@ const COLUMNS = {
   vk: ["vk", "verkaufspreis", "verkauf", "vkpreis"],
   vkDate: ["vkdatum", "verkaufsdatum"],
   notes: ["notiz", "notizen", "bemerkung"],
+  kind: ["karte", "kartentyp", "qualität", "special"],
 };
 // Spaltenpositionen im Reiter „Spieler“, falls keine Überschrift erkannt wird
 const EXCEL_INDEX = { name: 0, rating: 1, chem: 2, ek: 3, ekDate: 4, vk: 6, vkDate: 7 };
@@ -103,6 +104,7 @@ export function rowsToCards(rows, recordedBy = "") {
       id: "import-" + stableHash(`${key}|${o}`), name,
       rating: parseInt(String(get("rating") ?? "").replace(/\D/g, ""), 10) || 0,
       chem: matchStyle(chemRaw) || chemRaw || "Basic",
+      ...(/special/i.test(String(get("kind") ?? "")) ? { special: true } : {}),
       ek, ekDate, vk, vkDate, owner: recordedBy, notes: String(get("notes") ?? ""), createdAt: new Date(ekDate).getTime(),
     });
   });

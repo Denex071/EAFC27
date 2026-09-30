@@ -157,3 +157,6 @@ input,select,textarea{font-size:16px !important}
 .ws-line select{flex:1}
 .ws-price{width:84px;text-align:right}
 .ws-row .warn{padding:2px 0 4px}
+.tag.sp{background:rgba(160,106,224,.2);color:#c29cf0}
+.ws-sp{font-size:13px;color:var(--muted);gap:8px}
+.sp-text{color:#c29cf0;font-weight:700}
