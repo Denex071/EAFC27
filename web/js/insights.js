@@ -9,7 +9,7 @@ const hold = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate));
 
 // staleDays: ab wann eine Karte eine Preisanpassung braucht; lockDays: so viele Tage nach bestätigter Anpassung
 // noch unverkauft → nach dem Verkauf kein Nachkauf
-export const DEFAULTS = { weeklyGoal: 0, minProfit: 300, staleDays: 7, lockDays: 3 };
+export const DEFAULTS = { weeklyGoal: 0, minProfit: 300, staleDays: 7, lockDays: 3, readjustDays: 5 };
 
 // ---------- Nachkauf-Bewertung ----------
 

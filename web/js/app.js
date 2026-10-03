@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.10.1";
+const VERSION = "1.11.2";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -166,7 +166,19 @@ function wishSlots() {
 const wishGroups = () => { const slots = wishSlots(); return sortedWishes().map(w => ({
   key: "w:" + w.id, wish: w, name: w.name, rating: w.rating, chem: w.chem, special: !!w.special, lastEk: w.price, lastVk: null, soldOn: null,
   items: Array(w.qty || 1).fill(w), replaces: slots.get(w.id) || [] })); };
-const allBuyGroups = () => [...restockGroups(), ...wishGroups()];
+/// Jeder Spieler (Name + Rating + Gold/Special) steht nur einmal auf der Einkaufsliste: Nachkauf-Einträge und geplante Spieler
+/// werden zu einer Zeile zusammengefasst (parts). Angezeigt wird der erste Teil – Nachkauf vor geplant, ältere vor neueren.
+const playerKey = g => `${nameKey(g.name)}|${g.rating}|${g.special ? "sp" : ""}`;
+function allBuyGroups() {
+  const merged = new Map();
+  for (const g of [...restockGroups(), ...wishGroups()]) {
+    const k = playerKey(g), m = merged.get(k);
+    if (!m) { merged.set(k, { ...g, parts: [g] }); continue; }
+    m.parts.push(g); m.items = [...m.items, ...g.items];
+    if (g.replaces) m.replaces = [...(m.replaces || []), ...g.replaces];
+  }
+  return [...merged.values()];
+}
 const TURN_DAYS = 10;
 /// Drehungen (Verkäufe) der letzten TURN_DAYS Tage je Spieler + Rating; Tag 1 = heute. Nur gelesen, nichts wird geändert.
 function turnover(name, rating, special) {
@@ -190,6 +202,8 @@ function tlTag(g) {
 }
 const turnText = t => t.n >= 2 ? `<b>${t.n}× gedreht</b> in ${TURN_DAYS} Tagen` : t.n === 1 ? `1× gedreht in ${TURN_DAYS} Tagen (Tag ${t.day})`
   : t.known ? `in ${TURN_DAYS} Tagen nicht gedreht` : "<b>neuer Spieler</b> – noch nie gekauft";
+const partsText = g => { const r = sum(g.parts.filter(p => !p.wish).map(p => p.items.length)), w = sum(g.parts.filter(p => p.wish).map(p => p.items.length));
+  return [r ? `${r}× Nachkauf` : "", w ? `${w}× geplant` : ""].filter(Boolean).join(" · "); };
 const openBuyCount = () => restockOpen().length + sum(sortedWishes().map(w => w.qty || 1));
 /// Kauf eines geplanten Spielers: Anzahl verringern bzw. Eintrag löschen; ersetzte Ladenhüter sind damit erledigt
 function useWish(w, n = 1) {
@@ -307,14 +321,15 @@ function renderOnboarding() {
 // ---------- Hauptansicht ----------
 const ui = { tab: LS.get("fct-tab") || "dash", period: "all", filter: "open", sort: "newest", q: "", sel: 9, wsel: 7,
   dim: LS.get("fct-dim") || "price", range: "all" };
-const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", wealth: "Vermögen", more: "Einstellungen" };
-const TABS = ["dash", "list", "buy", "wealth", "more"];
+const TITLES = { dash: "Übersicht", list: "Spieler", buy: "Einkauf", stale: "Ladenhüter", wealth: "Vermögen", more: "Einstellungen" };
+const TABS = ["dash", "list", "buy", "stale", "wealth", "more"];
 const ICONS = {
   scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 10h8M8 14h5"/></svg>',
   add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   buy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/></svg>',
+  stale: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>',
   wealth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
   more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
 };
@@ -352,6 +367,8 @@ function render() {
   const badge = root.querySelector('[data-badge="buy"]');
   const openBuys = openBuyCount();
   badge.hidden = !openBuys; badge.textContent = openBuys > 99 ? "99+" : openBuys;
+  const sb = root.querySelector('[data-badge="stale"]'), todo = S.data.ready ? staleTodo() : 0;
+  sb.hidden = !todo; sb.textContent = todo > 99 ? "99+" : todo;
   const top = [];
   if (newVersion) top.push(`<div class="banner" style="display:flex;gap:10px;align-items:center;border-style:solid"><span style="flex:1">Neue Version ${esc(newVersion)} verfügbar.</span>
     <button class="mini gold" data-act="update">Aktualisieren</button></div>`);
@@ -365,7 +382,7 @@ function render() {
     clearTimeout(render.pendingTimer); render.pendingTimer = setTimeout(render, 9000);
   } else if (S.data.offline && S.data.mode === "cloud") top.push(`<div class="banner">Offline – Änderungen werden gespeichert, sobald wieder eine Verbindung besteht.</div>`);
   if (!S.data.ready) { view.innerHTML = top.join("") + `<div class="empty">Daten werden geladen …</div>`; return; }
-  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, wealth: wealthHtml, more: moreHtml })[ui.tab || "dash"]();
+  view.innerHTML = top.join("") + ({ dash: dashHtml, list: listHtml, buy: buyHtml, stale: staleHtml, wealth: wealthHtml, more: moreHtml })[ui.tab || "dash"]();
   if (ui.tab === "list") bindListInputs();
 }
 
@@ -382,7 +399,6 @@ function dashHtml() {
     <section class="hero ${s.realized < 0 ? "neg" : ""}"><div class="lbl">Gesamtgewinn · ${per}</div>
       <div class="big num">${signed(s.realized)}</div><div class="sub">aus ${s.sold.length} Verkäufen · ${s.open.length} Spieler offen</div></section>
     ${goalHtml()}
-    ${staleHtml()}
     <section class="tiles">
       ${tile("Unverkaufte Spieler", s.open.length, "aktueller Bestand")}
       ${tile("Aktuell investiert", fmt(s.capital), "EK der offenen Spieler")}
@@ -402,7 +418,7 @@ function dashHtml() {
     <section class="card"><div class="head"><h2>Top-Spieler · ${per}</h2>${s.players.length ? `<button class="mini" data-act="ranking">Alle ${s.players.length}</button>` : ""}</div>
       ${s.players.slice(0, 5).map((p, i) => playerRow(p, i + 1)).join("") || '<div class="empty">Keine Verkäufe im Zeitraum.</div>'}</section>
     ${s.best ? `<section class="card"><h2>Top &amp; Flop</h2>${flip(s.best, "Bester Verkauf")}${s.worst ? '<div class="divider"></div>' + flip(s.worst, "Schwächster Verkauf") : ""}</section>` : ""}
-    ${!I.staleCards(S.data.cards, cfg().staleDays).length && s.longest.length ? `<section class="card"><h2>Am längsten im Club</h2>${s.longest.map(c => `
+    ${s.longest.length ? `<section class="card"><h2>Am längsten im Club</h2>${s.longest.map(c => `
       <div class="row">${badge(c.rating, 1, c.special)}<div class="grow"><div class="name">${esc(c.name)}</div>
       <div class="meta">seit ${heldSince(c.ekDate)} · kalk. VK ${fmt(target(c.ek))} · BE ${fmt(breakEven(c.ek))}</div></div>
       <button class="mini gold" data-sell="${c.id}">Verkaufen</button></div>`).join("")}</section>` : ""}`;
@@ -423,42 +439,53 @@ function goalHtml() {
 }
 
 // ---------- Ladenhüter / Preisanpassung ----------
-/// Status einer offenen oder verkauften Karte: "due" (Anpassung fällig), "adjusted" (bestätigt, Frist läuft), "slow" (kein Nachkauf)
+/// Status einer Karte: "due" (Anpassung fällig), "again" (seit readjustDays Tagen nach der letzten Anpassung unverkauft → erneut anpassen),
+/// "adjusted" (bestätigt, wartet), "slow" (verkaufter Ladenhüter ohne Nachkauf). Unverkaufte Ladenhüter werden nach lockDays ebenfalls nicht nachgekauft.
+const lastAdjust = c => c.readjustedAt || c.adjustedAt;
 function staleState(c) {
-  if (slowSeller(c)) return "slow";
-  if (!isSold(c) && c.adjustedAt) return "adjusted";
-  if (!isSold(c) && daysBetween(parseDay(c.ekDate), new Date()) >= cfg().staleDays) return "due";
+  if (isSold(c)) return slowSeller(c) ? "slow" : null;
+  if (c.adjustedAt) return daysBetween(parseDay(lastAdjust(c)), new Date()) >= cfg().readjustDays ? "again" : "adjusted";
+  if (daysBetween(parseDay(c.ekDate), new Date()) >= cfg().staleDays) return "due";
   return null;
 }
-const staleTag = c => ({ due: '<span class="tag alert">Preis anpassen</span>', slow: '<span class="tag alert">kein Nachkauf</span>',
-  adjusted: '<span class="tag listed">angepasst</span>' })[staleState(c)] || "";
-function staleRow(c, attrs = { adjust: "data-adjust", sell: "data-sell" }) {
-  const st = staleState(c), lock = cfg().lockDays;
-  const left = c.adjustedAt ? lock - daysBetween(parseDay(c.adjustedAt), new Date()) : 0;
+const staleTag = c => ({ due: '<span class="tag alert">Preis anpassen</span>', again: '<span class="tag alert">erneut anpassen</span>',
+  slow: '<span class="tag alert">kein Nachkauf</span>', adjusted: '<span class="tag listed">angepasst</span>' })[staleState(c)] || "";
+/// Ladenhüter-Seite: noch nicht angepasst → erneut anpassen → angepasst (wartet); innerhalb jeweils am längsten im Club zuerst
+const STALE_ORDER = { due: 0, again: 1, adjusted: 2 };
+const staleList = () => S.data.cards.filter(c => !isSold(c) && (c.adjustedAt || staleState(c) === "due"))
+  .sort((a, b) => STALE_ORDER[staleState(a)] - STALE_ORDER[staleState(b)] || a.ekDate.localeCompare(b.ekDate));
+const staleTodo = () => staleList().filter(c => ["due", "again"].includes(staleState(c))).length;
+function staleRow(c) {
+  const st = staleState(c), { lockDays, readjustDays } = cfg();
+  const since = c.adjustedAt ? daysBetween(parseDay(lastAdjust(c)), new Date()) : 0, noRestock = slowSeller(c);
   const info = st === "due" ? `${heldSince(c.ekDate)} unverkauft – bitte Preis anpassen`
-    : st === "adjusted" ? `angepasst am ${fmtShort(parseDay(c.adjustedAt))} · noch ${left} T bis „kein Nachkauf“`
-    : `seit ${fmtShort(parseDay(c.adjustedAt))} angepasst, weiter unverkauft → wird nicht nachgekauft`;
-  return `<div class="row" style="align-items:flex-start">${badge(c.rating, 1, c.special)}<div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div>
-      <div class="meta">EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.marketEk ? ` · akt. EK ${fmt(c.marketEk)}` : ""}${c.targetVk ? ` · neuer VK ${fmt(c.targetVk)}` : ""}</div>
-      <div class="stat-line" style="${st === "due" || st === "slow" ? "color:var(--warn)" : ""}">${info}</div></div>
-    <div style="display:flex;flex-direction:column;gap:6px"><button class="mini ${st === "due" ? "gold" : ""}" ${attrs.adjust}="${c.id}">${st === "due" ? "Angepasst" : "Preis"}</button>
-      <button class="mini" ${attrs.sell}="${c.id}">VK</button></div></div>`;
+    : st === "again" ? `zuletzt angepasst am ${fmtShort(parseDay(lastAdjust(c)))} (vor ${since} T), noch unverkauft – bitte Preis erneut anpassen`
+    : `angepasst am ${fmtShort(parseDay(lastAdjust(c)))} · erneut anpassen in ${readjustDays - since} T`;
+  const restock = st === "due" ? "" : noRestock ? " · wird nicht nachgekauft"
+    : ` · noch ${lockDays - daysBetween(parseDay(c.adjustedAt), new Date())} T bis „kein Nachkauf“`;
+  return `<div class="item" style="cursor:default;align-items:flex-start">${badge(c.rating, 0, c.special)}<div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div>
+      <div class="meta">${spMeta(c.special)}${esc(c.chem)} · EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.marketEk ? ` · akt. EK ${fmt(c.marketEk)}` : ""}${c.targetVk ? ` · VK ${fmt(c.targetVk)}` : ""}</div>
+      <div class="stat-line" style="${st !== "adjusted" ? "color:var(--warn)" : ""}">${info}${restock}</div></div>
+    <div class="right" style="display:flex;flex-direction:column;gap:6px"><button class="mini ${st !== "adjusted" ? "gold" : ""}" data-adjust="${c.id}">${st === "adjusted" ? "Preis" : "Angepasst"}</button>
+      <button class="mini" data-sell="${c.id}">VK</button></div></div>`;
 }
 function staleHtml() {
-  const { staleDays, lockDays } = cfg(), list = I.staleCards(S.data.cards, staleDays);
-  if (!list.length) return "";
-  const due = list.filter(c => staleState(c) === "due").length, slow = list.filter(c => staleState(c) === "slow").length;
-  return `<section class="card"><div class="head"><h2>Ladenhüter</h2><span class="tag alert">${list.length} ≥ ${staleDays} Tage</span></div>
-    <div class="stat-line"><b>${fmt(sum(list.map(c => c.ek)))}</b> Coins gebunden${due ? ` · <b>${due}</b> brauchen eine Preisanpassung` : ""}${slow ? ` · ${slow} ohne Nachkauf` : ""}</div>
-    ${list.slice(0, 5).map(c => staleRow(c)).join('<div class="divider"></div>')}
-    ${list.length > 5 ? `<button class="mini" data-act="stale" style="align-self:flex-start">Alle ${list.length} anzeigen</button>` : ""}
-    <p class="hint" style="padding:0">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${lockDays} Tage danach noch nicht verkauft, kommt sie nach dem Verkauf nicht auf die Einkaufsliste.</p></section>`;
+  const { staleDays, lockDays, readjustDays } = cfg(), list = staleList();
+  const due = list.filter(c => staleState(c) === "due").length, again = list.filter(c => staleState(c) === "again").length;
+  return `<section class="tiles">
+      <div class="tile"><div class="t">Ladenhüter</div><div class="v num">${list.length}</div><div class="d">${fmt(sum(list.map(c => c.ek)))} Coins gebunden</div></div>
+      <div class="tile"><div class="t">Anpassen</div><div class="v num">${due + again}</div><div class="d">${due} neu · ${again} erneut</div></div></section>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Anpassen</h2><span class="hint">neue zuerst</span></div>
+      <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${list.map(staleRow).join("") || '<div class="empty">Keine Ladenhüter – alles verkauft sich.</div>'}</div></section>
+    <p class="hint">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${readjustDays} Tage nach der letzten Anpassung immer noch nicht verkauft,
+      erscheint sie wieder oben mit „erneut anpassen“, bis sie sich verkauft. Ist sie ${lockDays} Tage nach der ersten Anpassung noch unverkauft, kommt sie nach dem Verkauf
+      <b>nicht</b> auf die Einkaufsliste – daran ändern weitere Anpassungen nichts.</p>`;
 }
 
 /// Preisanpassung bestätigen. Der aktuelle Markt-EK dient nur zur Berechnung des neuen VK – der EK der Karte bleibt unverändert.
 function openAdjust(card) {
-  const again = !!card.adjustedAt;
-  let vkTouched = !!card.targetVk;
+  const again = !!card.adjustedAt, redo = staleState(card) === "again"; // redo: erneute Anpassung fällig
+  let vkTouched = !!card.targetVk && !redo;
   const body = `<div class="form">
     <div class="group"><div class="field" style="border:0">${badge(card.rating, 0, card.special)}<div class="grow" style="min-width:0"><div class="name">${esc(card.name)}${spTag(card.special)}</div>
       <div class="meta">${esc(card.chem)} · EK ${fmt(card.ek)} · ${heldSince(card.ekDate)} im Club</div></div></div></div>
@@ -466,17 +493,18 @@ function openAdjust(card) {
       <div class="field"><label for="a-ek">Aktueller EK</label><input id="a-ek" inputmode="decimal" value="${card.marketEk || card.ek}"></div>
       <p class="hint" style="padding:0 12px 10px">Nur Grundlage für den neuen VK – dein EK von ${fmt(card.ek)} bleibt gespeichert.</p></div>
     <div class="group"><div class="gh">Neuer VK</div>
-      <div class="field"><label for="a-vk">Neuer VK</label><input id="a-vk" inputmode="decimal" value="${card.targetVk || target(card.marketEk || card.ek)}"></div>
+      <div class="field"><label for="a-vk">Neuer VK</label><input id="a-vk" inputmode="decimal" value="${card.targetVk ? (redo ? stepPrice(card.targetVk, -1) : card.targetVk) : target(card.marketEk || card.ek)}"></div>
       <div class="chips"><button type="button" class="chip" data-av="calc">kalk. VK aus akt. EK</button><button type="button" class="chip" data-ap="-1">− Stufe</button>
         <button type="button" class="chip" data-ap="1">+ Stufe</button><button type="button" class="chip" data-av="${breakEven(card.ek)}">Break-even ${compact(breakEven(card.ek))}</button></div>
       <div id="a-calc"></div></div>
-    <p class="hint">${again ? `Anpassung bestätigt am ${fmtShort(parseDay(card.adjustedAt))} – hier nur Preise aktualisieren.`
+    <p class="hint">${redo ? `Seit der letzten Anpassung am ${fmtShort(parseDay(lastAdjust(card)))} nicht verkauft – neuen Preis setzen und bestätigen. In ${cfg().readjustDays} Tagen wird wieder erinnert, falls die Karte dann noch da ist. Nachgekauft wird sie nicht.`
+      : again ? `Anpassung bestätigt am ${fmtShort(parseDay(card.adjustedAt))} – hier nur Preise aktualisieren.`
       : `Mit „Bestätigen“ wird die Preisanpassung vermerkt. Ist ${esc(card.name)} ${cfg().lockDays} Tage danach noch nicht verkauft, kommt die Karte nach dem Verkauf <b>nicht</b> auf die Einkaufsliste.`}
       Der neue VK ist beim Verkaufen vorbelegt.</p></div>`;
-  const refresh = sheet(again ? "Preis aktualisieren" : "Preisanpassung", body, again ? "Sichern" : "Bestätigen", () => {
+  const refresh = sheet(redo ? "Erneute Preisanpassung" : again ? "Preis aktualisieren" : "Preisanpassung", body, again && !redo ? "Sichern" : "Bestätigen", () => {
     const today = toISODate(new Date()), mEk = parseCoins($("a-ek").value), vk = parseCoins($("a-vk").value);
-    S.saveCard({ ...card, adjustedAt: card.adjustedAt || today, marketEk: mEk && mEk !== card.ek ? mEk : null, targetVk: vk || null });
-    closeSheet(); toast(again ? "Preis aktualisiert" : `Preisanpassung für ${card.name} bestätigt`);
+    S.saveCard({ ...card, adjustedAt: card.adjustedAt || today, ...(redo ? { readjustedAt: today } : {}), marketEk: mEk && mEk !== card.ek ? mEk : null, targetVk: vk || null });
+    closeSheet(); toast(redo ? `Erneute Anpassung für ${card.name} bestätigt` : again ? "Preis aktualisiert" : `Preisanpassung für ${card.name} bestätigt`);
   }, () => parseCoins($("a-vk").value) > 0);
   const upd = () => {
     const mEk = parseCoins($("a-ek").value) || card.ek, vk = parseCoins($("a-vk").value);
@@ -692,7 +720,7 @@ function bindListInputs() {
 }
 
 function buyHtml() {
-  const groups = sortedBuyGroups(), restock = groups.filter(g => !g.wish), planned = groups.filter(g => g.wish);
+  const groups = sortedBuyGroups(), parts = groups.flatMap(g => g.parts), restock = parts.filter(g => !g.wish), planned = parts.filter(g => g.wish);
   const addBtn = `<div style="display:flex;gap:8px"><button class="secondary" data-act="wish" style="flex:1">+ Spieler hinzufügen</button>
     <label class="secondary" for="wishScanInput" style="flex:1;text-align:center">Screenshot hochladen</label></div>
     <input class="hidden" type="file" id="wishScanInput" accept="image/*" multiple>`;
@@ -709,13 +737,14 @@ function buyHtml() {
   const { minProfit } = cfg();
   groups.forEach(g => { g.st = I.flipStats(S.data.cards, g.name, g.rating, g.chem, minProfit, g.special); });
   const count = sum(restock.map(g => g.items.length)), pcount = sum(planned.map(g => g.items.length));
-  const budget = sum(groups.map(g => g.lastEk * g.items.length));
+  const budget = sum(parts.map(g => g.lastEk * g.items.length));
   const freeSlots = replaceSlots().length, usedSlots = sum(planned.map(g => g.replaces.length));
   const row = g => `<div class="item" style="cursor:default">
       ${badge(g.rating, 0, g.special)}
       <div class="grow" style="min-width:0;${g.wish ? "cursor:pointer" : ""}" ${g.wish ? `data-wish="${esc(g.wish.id)}"` : ""}><div class="name">${esc(g.name)}${g.items.length > 1 ? ` <span class="gold-text">×${g.items.length}</span>` : ""}${g.wish ? '<span class="tag listed">geplant</span>' : ""}${tlTag(g)}</div>
         <div class="meta">${spMeta(g.special)}${g.wish ? `${esc(g.chem)} · EK ${fmt(g.lastEk)}` : `${esc(g.chem)} · ${g.planned ? "geplanter " : ""}EK ${fmt(g.lastEk)}${g.offer ? ` · Angebot ~${compact(g.offer)}` : ""} · VK ${compact(g.lastVk)} am ${fmtShort(parseDay(g.soldOn))}`}</div>
         <div class="stat-line">${turnText(g.turn)}</div>
+        ${g.parts.length > 1 ? `<div class="stat-line">zusammengefasst: ${partsText(g)}</div>` : ""}
         ${g.wish?.offer ? `<div class="stat-line">Angebot ~<b>${fmt(g.wish.offer)}</b> · Gewinn ${signed(profitOf(g.lastEk, g.wish.offer))}</div>` : ""}
         ${g.wish ? `<div class="stat-line">${g.replaces.length ? `ersetzt <b>${g.replaces.map(c => esc(c.name)).join(", ")}</b> (kein Nachkauf)` : "bereit als Ersatz"} · geplant von ${esc(g.wish.owner || "euch")}</div>` : ""}
         ${g.st ? `<div class="stat-line">${g.st.n}× gedreht · Ø <b>${signed(g.st.avg)}</b> · ${holdText(g.st.hold)}${g.st.maxEk ? ` · max. EK <b>${fmt(g.st.maxEk)}</b>` : ""}${g.st.maxEk && g.lastEk > g.st.maxEk ? '<span class="tag alert">teuer</span>' : ""}</div>` : ""}</div>
@@ -802,17 +831,27 @@ function openBuy(key) {
   const qty = () => $("k-qty") ? +$("k-qty").value : 1;
   const refresh = sheet(g.wish ? "Kauf erfassen" : "Nachkauf erfassen", body, "Gekauft", () => {
     const ek = parseCoins($("k-ek").value), n = qty();
-    for (let i = 0; i < n; i++) {
-      S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, special: $("k-sp").checked, ek, ekDate: $("k-date").value || toISODate(new Date()),
-        vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i, ...((g.wish?.offer || g.offer) ? { targetVk: g.wish?.offer || g.offer } : {}) });
-      if (!g.wish) S.saveCard({ ...g.items[i], restock: "done" });
+    // Stück für Stück abhaken: zuerst Nachkauf-Einträge, dann geplante Spieler (Reihenfolge der zusammengefassten Teile)
+    let left = n, i = 0;
+    for (const part of g.parts) {
+      const k = Math.min(left, part.items.length), offer = part.wish?.offer || part.offer;
+      for (let j = 0; j < k; j++, i++) {
+        S.saveCard({ id: S.newId(), name: g.name, rating: g.rating, chem: $("k-chem").value, special: $("k-sp").checked, ek, ekDate: $("k-date").value || toISODate(new Date()),
+          vk: null, vkDate: null, owner: settings.name, notes: "", createdAt: Date.now() + i, ...(offer ? { targetVk: offer } : {}) });
+        if (!part.wish) S.saveCard({ ...part.items[j], restock: "done" });
+      }
+      if (part.wish && k) useWish(part.wish, k);
+      if (!(left -= k)) break;
     }
-    if (g.wish) useWish(g.wish, n);
     closeSheet(); toast(n > 1 ? `${n}× ${g.name} gekauft` : `${g.name} gekauft`);
   }, () => parseCoins($("k-ek").value) > 0);
   const upd = () => {
     const ek = parseCoins($("k-ek").value);
-    $("k-calc").innerHTML = calcHtml(ek, g.wish?.offer || g.offer || null);
+    const offer = g.wish?.offer || g.offer || null, kvk = ek ? target(ek) : 0;
+    // kalk. VK groß hervorgehoben, darunter die Rechnung (mit Angebotspreis) bzw. der Break-even
+    $("k-calc").innerHTML = ek ? `<div class="kvk"><div><div class="t">kalk. VK</div><div class="v num">${fmt(kvk)}</div></div>
+      <div class="right"><div class="t">Gewinn bei kalk. VK</div>${profitHtml(profitOf(ek, kvk))}</div></div>`
+      + (offer ? calcHtml(ek, offer) : `<div class="calc"><div class="l"><span>Break-even nach Tax</span><span class="num">${fmt(breakEven(ek))}</span></div></div>`) : "";
     $("k-warn").innerHTML = st?.maxEk && ek > st.maxEk ? `<div class="warn">Über max. EK – beim üblichen VK von ${fmt(st.expVk)} bleiben nur ${signed(profitOf(ek, st.expVk))}.</div>` : "";
     refresh();
   };
@@ -863,7 +902,8 @@ function moreHtml() {
         <div class="field"><label for="c-goal">Wochenziel Gewinn</label><input id="c-goal" data-cfg="weeklyGoal" inputmode="decimal" value="${cfg().weeklyGoal || ""}" placeholder="aus"></div>
         <div class="field"><label for="c-min">Mindestgewinn pro Karte</label><input id="c-min" data-cfg="minProfit" inputmode="decimal" value="${cfg().minProfit}"></div>
         <div class="field"><label for="c-stale">Preisanpassung nach Tagen</label><input id="c-stale" data-cfg="staleDays" inputmode="numeric" value="${cfg().staleDays}"></div>
-        <div class="field"><label for="c-lock">Kein Nachkauf, wenn danach noch Tage unverkauft</label><input id="c-lock" data-cfg="lockDays" inputmode="numeric" value="${cfg().lockDays}"></div></div>
+        <div class="field"><label for="c-lock">Kein Nachkauf, wenn danach noch Tage unverkauft</label><input id="c-lock" data-cfg="lockDays" inputmode="numeric" value="${cfg().lockDays}"></div>
+        <div class="field"><label for="c-readj">Erneut anpassen nach Tagen</label><input id="c-readj" data-cfg="readjustDays" inputmode="numeric" value="${cfg().readjustDays}"></div></div>
       <p class="hint" style="padding:0">Der Mindestgewinn bestimmt den „max. EK“ auf der Einkaufsliste.</p></section>
     <section class="card"><h2>Daten</h2>
       <button class="secondary" data-act="backup">Backup herunterladen (alles)</button>
@@ -936,7 +976,6 @@ function onViewClick(e) {
   if (act === "wish") openWish();
   if (act === "update") applyUpdate();
   if (act === "goal") openGoal();
-  if (act === "stale") openStale();
   if (act === "backup") downloadBackup();
   if (act === "snap") openSnap();
   if (act === "import") openImport();
@@ -957,7 +996,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "m-name") { settings.name = e.target.value.trim(); LS.set("fct-name", settings.name); toast("Name gespeichert"); }
   if (e.target.dataset.cfg) {
     const k = e.target.dataset.cfg, v = Math.max(0, parseCoins(e.target.value) || 0);
-    S.saveSettings({ [k]: k === "staleDays" || k === "lockDays" ? Math.max(1, v || I.DEFAULTS[k]) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
+    S.saveSettings({ [k]: ["staleDays", "lockDays", "readjustDays"].includes(k) ? Math.max(1, v || I.DEFAULTS[k]) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
     toast("Gespeichert");
   }
   if (e.target.id === "restore-file" && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ""; restoreBackup(f); }
@@ -1110,16 +1149,6 @@ function openGoal() {
     <p class="hint">Gilt für das ganze Depot. Leer lassen = kein Ziel.</p></div>`;
   sheet("Wochenziel", body, "Sichern", () => { S.saveSettings({ weeklyGoal: parseCoins($("g-v").value) || 0 }); closeSheet(); toast("Wochenziel gespeichert"); });
   layer.querySelector(".sheet").addEventListener("click", e => { const b = e.target.closest("[data-gv]"); if (b) $("g-v").value = b.dataset.gv; });
-}
-
-function openStale() {
-  const list = I.staleCards(S.data.cards, cfg().staleDays);
-  sheet(`Ladenhüter (${list.length})`, `<div class="form"><div class="card">${list.map(c => staleRow(c, { adjust: "data-sadj", sell: "data-ssell" })).join('<div class="divider"></div>')}</div></div>`);
-  layer.querySelector(".sheet").addEventListener("click", e => {
-    const a = e.target.closest("[data-sadj]"), v = e.target.closest("[data-ssell]");
-    if (a) openAdjust(S.data.cards.find(c => c.id === a.dataset.sadj));
-    if (v) openSell(S.data.cards.find(c => c.id === v.dataset.ssell));
-  });
 }
 
 // ---------- Backup ----------

@@ -62,8 +62,8 @@ main{flex:1;padding:14px 16px 96px;display:flex;flex-direction:column;gap:14px}
 .search input{flex:1}
 .sumbar{position:sticky;bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:flex;justify-content:space-between;gap:10px;font-size:13.5px}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px))}
-nav.tabs .inner{max-width:480px;margin:0 auto;display:flex}
-nav.tabs button{flex:1;border:0;background:transparent;color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;padding:4px 0;cursor:pointer}
+nav.tabs .inner{max-width:480px;margin:0 auto;display:flex;gap:2px}
+nav.tabs button{flex:1 1 auto;min-width:0;border:0;background:transparent;color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;font-weight:600;padding:4px 0;cursor:pointer;white-space:nowrap}
 nav.tabs button svg{width:24px;height:24px}
 nav.tabs button[aria-current="page"]{color:var(--gold)}
 .chart{width:100%;height:auto;display:block}
@@ -160,3 +160,8 @@ input,select,textarea{font-size:16px !important}
 .tag.sp{background:rgba(160,106,224,.2);color:#c29cf0}
 .ws-sp{font-size:13px;color:var(--muted);gap:8px}
 .sp-text{color:#c29cf0;font-weight:700}
+.kvk{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 12px 2px;padding:12px 14px;border-radius:12px;background:rgba(224,185,90,.12);border:1px solid rgba(224,185,90,.45)}
+.kvk .t{font-size:12px;color:var(--muted);font-weight:600}
+.kvk .v{font:800 28px/1.1 var(--display);color:var(--gold)}
+.kvk .profit{font:800 18px/1.2 var(--display)}
+@media (max-width:380px){nav.tabs button{font-size:9.5px;letter-spacing:-.2px}nav.tabs button svg{width:22px;height:22px}nav.tabs{padding-left:4px;padding-right:4px}}
