@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.11.2";
+const VERSION = "1.11.3";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -719,6 +719,13 @@ function bindListInputs() {
   document.getElementById("range").onchange = e => { ui.range = e.target.value; render(); };
 }
 
+/// Wie viele Spieler gerade auf der Transferliste liegen (gekauft, noch nicht verkauft) – und wie viele nach dem Einkauf
+function tlTile(toBuy) {
+  const open = S.data.cards.filter(c => !isSold(c));
+  return `<div class="tile" style="grid-column:1/-1;display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div class="t">Transferliste</div>
+    <div class="v num">${open.length} Spieler</div><div class="d">${fmt(sum(open.map(c => c.ek)))} Coins EK gebunden</div></div>
+    ${toBuy ? `<div class="right"><div class="t">nach Einkauf</div><div class="v num" style="font-size:20px">${open.length + toBuy}</div><div class="d">+${toBuy} von der Liste</div></div>` : ""}</div>`;
+}
 function buyHtml() {
   const groups = sortedBuyGroups(), parts = groups.flatMap(g => g.parts), restock = parts.filter(g => !g.wish), planned = parts.filter(g => g.wish);
   const addBtn = `<div style="display:flex;gap:8px"><button class="secondary" data-act="wish" style="flex:1">+ Spieler hinzufügen</button>
@@ -731,7 +738,7 @@ function buyHtml() {
           <div class="meta">${spMeta(w.special)}${esc(w.chem)}${w.price ? ` · Preis ${fmt(w.price)}` : ""}${w.offer ? ` · Angebot ~${fmt(w.offer)}` : ""}</div></div>
         <div class="right" style="display:flex;gap:6px"><button class="mini" data-wdel="${esc(w.id)}" aria-label="Löschen" title="Löschen">✕</button>
           <button class="mini gold" data-tobuy="${esc(w.id)}">→ Einkaufsliste</button></div></div>`).join("") || '<div class="empty">Noch nichts gemerkt.</div>'}</div></section>`;
-  if (!groups.length && !replaceSlots().length && !watch.length) return `<section class="card"><h2>Alles nachgekauft</h2>
+  if (!groups.length && !replaceSlots().length && !watch.length) return `<section class="tiles">${tlTile(0)}</section><section class="card"><h2>Alles nachgekauft</h2>
     <p class="meta" style="white-space:normal;margin:0">Sobald ihr eine Karte als verkauft markiert, erscheint sie hier mit Name, Rating, Chemistry Style und letztem EK – zum Nachkaufen.
       Spieler, die ihr noch kaufen wollt, könnt ihr auch selbst hinzufügen.</p></section>${addBtn}${watchHtml}`;
   const { minProfit } = cfg();
@@ -752,6 +759,7 @@ function buyHtml() {
         <button class="mini" data-skip="${esc(g.key)}" aria-label="Überspringen" title="Überspringen">✕</button>
         <button class="mini gold" data-buy="${esc(g.key)}">Gekauft</button></div></div>`;
   return `<section class="tiles">
+      ${tlTile(count + pcount)}
       <div class="tile"><div class="t">Einkaufsliste</div><div class="v num">${count + pcount}</div><div class="d">${count} Nachkauf · ${pcount} Ersatz</div></div>
       <div class="tile"><div class="t">Budget (EK)</div><div class="v num">${fmt(budget)}</div><div class="d">inkl. ${pcount} Ersatzspieler</div></div></section>
     <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Einkaufsliste</h2><span class="hint">nach Drehungen (${TURN_DAYS} Tage)</span></div>
