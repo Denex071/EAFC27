@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.11.4";
+const VERSION = "1.11.5";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -186,12 +186,11 @@ function turnover(name, rating, special) {
   const days = mine.filter(isSold).map(c => daysBetween(parseDay(c.vkDate), today) + 1).filter(d => d >= 1 && d <= TURN_DAYS);
   return { n: days.length, day: days.length ? Math.min(...days) : null, known: mine.length > 0 };
 }
-/// Rang: 0 = in TURN_DAYS Tagen verkauft (häufigste oben), 1 = geplante Spieler, 2 = nicht gedreht
-const buyRank = g => g.wish ? 1 : g.turn.n > 0 ? 0 : 2;
 const addedAt = g => g.wish ? g.wish.createdAt || 0 : g.since;
 function sortedBuyGroups() {
   const gs = allBuyGroups(); gs.forEach(g => { g.turn = turnover(g.name, g.rating, g.special); });
-  return gs.sort((a, b) => buyRank(a) - buyRank(b) || b.turn.n - a.turn.n || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
+  // Häufigkeit (Verkäufe in TURN_DAYS Tagen) absteigend, dann jüngster Verkaufstag zuerst; ohne Verkauf ans Ende, dort ältester Eintrag zuerst
+  return gs.sort((a, b) => b.turn.n - a.turn.n || (a.turn.day ?? 99) - (b.turn.day ?? 99) || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
 }
 /// „TL“: Karte (Spieler + Rating) ist noch aktiv, also gekauft und nicht verkauft → nicht doppelt kaufen
 function tlTag(g) {
@@ -767,8 +766,8 @@ function buyHtml() {
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${groups.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
     ${addBtn}
     ${watchHtml}
-    <p class="hint">Reihenfolge: Karten, die in den letzten ${TURN_DAYS} Tagen verkauft wurden – je häufiger, desto weiter oben. Dahinter die geplanten Spieler,
-      ganz unten Karten ohne Drehung in ${TURN_DAYS} Tagen. Bei Gleichstand steht der ältere Eintrag oben.
+    <p class="hint">Reihenfolge: je häufiger eine Karte in den letzten ${TURN_DAYS} Tagen verkauft wurde, desto weiter oben; bei gleicher Anzahl steht der jüngste Verkauf oben.
+      Geplante Spieler werden genauso eingeordnet. Ganz unten Karten ohne Verkauf in ${TURN_DAYS} Tagen (ältester Eintrag zuerst).
       Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch geplante Spieler („geplant“) ersetzt – der älteste Plan zuerst.
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       <b>Lila</b> Rating = Special-Karte (Special und Gold desselben Spielers werden getrennt gezählt).
