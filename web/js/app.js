@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.11.3";
+const VERSION = "1.11.4";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -186,12 +186,12 @@ function turnover(name, rating, special) {
   const days = mine.filter(isSold).map(c => daysBetween(parseDay(c.vkDate), today) + 1).filter(d => d >= 1 && d <= TURN_DAYS);
   return { n: days.length, day: days.length ? Math.min(...days) : null, known: mine.length > 0 };
 }
-/// Rang auf der Einkaufsliste: mehrfach gedreht → neue Spieler → 1× gedreht → länger nicht gedreht (jeweils in TURN_DAYS Tagen)
-const turnRank = t => t.n >= 2 ? 0 : !t.known ? 1 : t.n === 1 ? 2 : 3;
+/// Rang: 0 = in TURN_DAYS Tagen verkauft (häufigste oben), 1 = geplante Spieler, 2 = nicht gedreht
+const buyRank = g => g.wish ? 1 : g.turn.n > 0 ? 0 : 2;
 const addedAt = g => g.wish ? g.wish.createdAt || 0 : g.since;
 function sortedBuyGroups() {
   const gs = allBuyGroups(); gs.forEach(g => { g.turn = turnover(g.name, g.rating, g.special); });
-  return gs.sort((a, b) => turnRank(a.turn) - turnRank(b.turn) || b.turn.n - a.turn.n || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
+  return gs.sort((a, b) => buyRank(a) - buyRank(b) || b.turn.n - a.turn.n || addedAt(a) - addedAt(b) || a.name.localeCompare(b.name));
 }
 /// „TL“: Karte (Spieler + Rating) ist noch aktiv, also gekauft und nicht verkauft → nicht doppelt kaufen
 function tlTag(g) {
@@ -450,10 +450,10 @@ function staleState(c) {
 }
 const staleTag = c => ({ due: '<span class="tag alert">Preis anpassen</span>', again: '<span class="tag alert">erneut anpassen</span>',
   slow: '<span class="tag alert">kein Nachkauf</span>', adjusted: '<span class="tag listed">angepasst</span>' })[staleState(c)] || "";
-/// Ladenhüter-Seite: noch nicht angepasst → erneut anpassen → angepasst (wartet); innerhalb jeweils am längsten im Club zuerst
+/// Ladenhüter-Seite: noch nicht angepasst → erneut anpassen → angepasst (wartet); innerhalb jeweils höchstes Rating zuerst
 const STALE_ORDER = { due: 0, again: 1, adjusted: 2 };
 const staleList = () => S.data.cards.filter(c => !isSold(c) && (c.adjustedAt || staleState(c) === "due"))
-  .sort((a, b) => STALE_ORDER[staleState(a)] - STALE_ORDER[staleState(b)] || a.ekDate.localeCompare(b.ekDate));
+  .sort((a, b) => STALE_ORDER[staleState(a)] - STALE_ORDER[staleState(b)] || b.rating - a.rating || a.ekDate.localeCompare(b.ekDate));
 const staleTodo = () => staleList().filter(c => ["due", "again"].includes(staleState(c))).length;
 function staleRow(c) {
   const st = staleState(c), { lockDays, readjustDays } = cfg();
@@ -475,7 +475,7 @@ function staleHtml() {
   return `<section class="tiles">
       <div class="tile"><div class="t">Ladenhüter</div><div class="v num">${list.length}</div><div class="d">${fmt(sum(list.map(c => c.ek)))} Coins gebunden</div></div>
       <div class="tile"><div class="t">Anpassen</div><div class="v num">${due + again}</div><div class="d">${due} neu · ${again} erneut</div></div></section>
-    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Anpassen</h2><span class="hint">neue zuerst</span></div>
+    <section class="card" style="padding:0;gap:0"><div class="head" style="padding:12px 14px"><h2>Anpassen</h2><span class="hint">nach Rating</span></div>
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${list.map(staleRow).join("") || '<div class="empty">Keine Ladenhüter – alles verkauft sich.</div>'}</div></section>
     <p class="hint">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${readjustDays} Tage nach der letzten Anpassung immer noch nicht verkauft,
       erscheint sie wieder oben mit „erneut anpassen“, bis sie sich verkauft. Ist sie ${lockDays} Tage nach der ersten Anpassung noch unverkauft, kommt sie nach dem Verkauf
@@ -767,8 +767,8 @@ function buyHtml() {
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${groups.map(row).join("") || '<div class="empty">Alles nachgekauft.</div>'}</div></section>
     ${addBtn}
     ${watchHtml}
-    <p class="hint">Reihenfolge: Karten, die sich in den letzten ${TURN_DAYS} Tagen mehrfach gedreht haben (die häufigste oben), dann neue Spieler (noch nie gekauft),
-      dann Karten mit nur 1 Drehung in ${TURN_DAYS} Tagen, ganz unten Karten ohne Drehung in ${TURN_DAYS} Tagen. Bei Gleichstand steht der ältere Eintrag oben.
+    <p class="hint">Reihenfolge: Karten, die in den letzten ${TURN_DAYS} Tagen verkauft wurden – je häufiger, desto weiter oben. Dahinter die geplanten Spieler,
+      ganz unten Karten ohne Drehung in ${TURN_DAYS} Tagen. Bei Gleichstand steht der ältere Eintrag oben.
       Karten, die sich schlecht verkaufen (kein Nachkauf), werden durch geplante Spieler („geplant“) ersetzt – der älteste Plan zuerst.
       Die <b>Merkliste</b> ist nur zum Beobachten – mit „→ Einkaufsliste“ kommt ein Spieler auf die Liste.
       <b>Lila</b> Rating = Special-Karte (Special und Gold desselben Spielers werden getrennt gezählt).
