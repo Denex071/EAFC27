@@ -7,7 +7,7 @@ import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.11.5";
+const VERSION = "1.11.6";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -110,7 +110,10 @@ const recentChems = () => [...new Set([...S.data.cards].sort((a, b) => (b.create
 // Verkäufe aus dem Excel-Import zählen nicht (die sind längst erledigt).
 // Auf der Einkaufsliste: in der App verkaufte Karten ("open"); alte Verkäufe aus dem Excel-Import nicht
 // Ladenhüter: nach bestätigter Preisanpassung noch lockDays Tage unverkauft → kein Nachkauf (außer von Hand „manual“)
-const slowSeller = c => !!c.adjustedAt && daysBetween(parseDay(c.adjustedAt), parseDay(c.vkDate || toISODate(new Date()))) >= cfg().lockDays;
+// Ohne bestätigte Anpassung wird nachgekauft – außer die Karte lag länger als maxHoldDays (30) Tage im Club.
+const heldDays = c => daysBetween(parseDay(c.ekDate), parseDay(c.vkDate || toISODate(new Date())));
+const slowSeller = c => (!!c.adjustedAt && daysBetween(parseDay(c.adjustedAt), parseDay(c.vkDate || toISODate(new Date()))) >= cfg().lockDays)
+  || heldDays(c) > cfg().maxHoldDays;
 const onRestock = c => isSold(c) && (c.restock === "manual"
   || ((c.restock === "open" || (!c.restock && !String(c.id).startsWith("import-"))) && !slowSeller(c)));
 const restockOpen = () => S.data.cards.filter(onRestock);
@@ -460,7 +463,7 @@ function staleRow(c) {
   const info = st === "due" ? `${heldSince(c.ekDate)} unverkauft – bitte Preis anpassen`
     : st === "again" ? `zuletzt angepasst am ${fmtShort(parseDay(lastAdjust(c)))} (vor ${since} T), noch unverkauft – bitte Preis erneut anpassen`
     : `angepasst am ${fmtShort(parseDay(lastAdjust(c)))} · erneut anpassen in ${readjustDays - since} T`;
-  const restock = st === "due" ? "" : noRestock ? " · wird nicht nachgekauft"
+  const restock = st === "due" ? (noRestock ? ` · über ${cfg().maxHoldDays} T im Club → wird nicht nachgekauft` : "") : noRestock ? " · wird nicht nachgekauft"
     : ` · noch ${lockDays - daysBetween(parseDay(c.adjustedAt), new Date())} T bis „kein Nachkauf“`;
   return `<div class="item" style="cursor:default;align-items:flex-start">${badge(c.rating, 0, c.special)}<div class="grow" style="min-width:0"><div class="name">${esc(c.name)}</div>
       <div class="meta">${spMeta(c.special)}${esc(c.chem)} · EK ${fmt(c.ek)} · BE ${fmt(breakEven(c.ek))}${c.marketEk ? ` · akt. EK ${fmt(c.marketEk)}` : ""}${c.targetVk ? ` · VK ${fmt(c.targetVk)}` : ""}</div>
@@ -478,7 +481,8 @@ function staleHtml() {
       <div class="list" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">${list.map(staleRow).join("") || '<div class="empty">Keine Ladenhüter – alles verkauft sich.</div>'}</div></section>
     <p class="hint">Nach ${staleDays} Tagen ohne Verkauf: Preis anpassen und mit „Angepasst“ bestätigen. Ist die Karte ${readjustDays} Tage nach der letzten Anpassung immer noch nicht verkauft,
       erscheint sie wieder oben mit „erneut anpassen“, bis sie sich verkauft. Ist sie ${lockDays} Tage nach der ersten Anpassung noch unverkauft, kommt sie nach dem Verkauf
-      <b>nicht</b> auf die Einkaufsliste – daran ändern weitere Anpassungen nichts.</p>`;
+      <b>nicht</b> auf die Einkaufsliste – daran ändern weitere Anpassungen nichts. Ohne Anpassung kommt eine verkaufte Karte trotzdem auf die Einkaufsliste,
+      außer sie lag länger als ${cfg().maxHoldDays} Tage im Club.</p>`;
 }
 
 /// Preisanpassung bestätigen. Der aktuelle Markt-EK dient nur zur Berechnung des neuen VK – der EK der Karte bleibt unverändert.
@@ -910,7 +914,8 @@ function moreHtml() {
         <div class="field"><label for="c-min">Mindestgewinn pro Karte</label><input id="c-min" data-cfg="minProfit" inputmode="decimal" value="${cfg().minProfit}"></div>
         <div class="field"><label for="c-stale">Preisanpassung nach Tagen</label><input id="c-stale" data-cfg="staleDays" inputmode="numeric" value="${cfg().staleDays}"></div>
         <div class="field"><label for="c-lock">Kein Nachkauf, wenn danach noch Tage unverkauft</label><input id="c-lock" data-cfg="lockDays" inputmode="numeric" value="${cfg().lockDays}"></div>
-        <div class="field"><label for="c-readj">Erneut anpassen nach Tagen</label><input id="c-readj" data-cfg="readjustDays" inputmode="numeric" value="${cfg().readjustDays}"></div></div>
+        <div class="field"><label for="c-readj">Erneut anpassen nach Tagen</label><input id="c-readj" data-cfg="readjustDays" inputmode="numeric" value="${cfg().readjustDays}"></div>
+        <div class="field"><label for="c-maxhold">Kein Nachkauf nach Tagen im Club</label><input id="c-maxhold" data-cfg="maxHoldDays" inputmode="numeric" value="${cfg().maxHoldDays}"></div></div>
       <p class="hint" style="padding:0">Der Mindestgewinn bestimmt den „max. EK“ auf der Einkaufsliste.</p></section>
     <section class="card"><h2>Daten</h2>
       <button class="secondary" data-act="backup">Backup herunterladen (alles)</button>
@@ -1003,7 +1008,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "m-name") { settings.name = e.target.value.trim(); LS.set("fct-name", settings.name); toast("Name gespeichert"); }
   if (e.target.dataset.cfg) {
     const k = e.target.dataset.cfg, v = Math.max(0, parseCoins(e.target.value) || 0);
-    S.saveSettings({ [k]: ["staleDays", "lockDays", "readjustDays"].includes(k) ? Math.max(1, v || I.DEFAULTS[k]) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
+    S.saveSettings({ [k]: ["staleDays", "lockDays", "readjustDays", "maxHoldDays"].includes(k) ? Math.max(1, v || I.DEFAULTS[k]) : k === "minProfit" && !e.target.value.trim() ? I.DEFAULTS.minProfit : v });
     toast("Gespeichert");
   }
   if (e.target.id === "restore-file" && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ""; restoreBackup(f); }
