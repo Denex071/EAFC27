@@ -5,9 +5,11 @@ import { STYLES, TIERS, MARKUP_ABOVE, tax, profitOf, target, breakEven, fmt, sig
   DAY, dOnly, toISODate, parseDay, fmtDate, fmtShort, daysBetween, holdText, isoWeek, roundPrice, stepPrice } from "./calc.js";
 import * as I from "./insights.js";
 import { nameKey, similarKeys, canonicalName } from "./parser.js";
+import { matchPlayerName } from "./namematch.js";
+import { PLAYER_NAMES } from "./players.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.11.6";
+const VERSION = "1.12.0";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -1279,9 +1281,10 @@ async function runWishScan(files) {
     if (!found.length) return toast("Auf dem Bild wurden keine Spieler erkannt", true);
     const known = knownNames();
     openWishScan(found.map(f => {
-      const name = f.name ? canonicalName(f.name, known) : "";
+      // eigene Spieler und bekannte EA-FC-Namen bevorzugen („Mossl“ → „Messi“)
+      const name = f.name ? matchPlayerName(f.name, known, PLAYER_NAMES) || canonicalName(f.name, known) : "";
       const last = name ? lastCard(name) : null;
-      return { include: !!name, name, rating: f.rating ?? last?.rating ?? "", chem: last?.chem || "Basic", price: f.price ?? "" };
+      return { include: !!name, name, rating: f.rating ?? last?.rating ?? "", chem: last?.chem || "Basic", price: f.price ?? "", small: !!f.small };
     }));
   } catch (e) { hideProgress(); toast("Erkennung fehlgeschlagen: " + e.message, true); }
 }
@@ -1300,6 +1303,8 @@ function openWishScan(drafts) {
   const ready = () => drafts.filter(d => d.include && valid(d));
   const body = `<div class="form">
     <div id="ws-list">${seg([["buy", "Einkaufsliste"], ["watch", "Merkliste"]], list, "wl")}</div>
+    ${drafts.some(d => d.small) ? `<div class="warn">Der Screenshot ist sehr klein – Zahlen sind dort nur wenige Pixel groß. Bitte Ratings und Preise kurz prüfen.
+      Tipp: die Liste größer aufnehmen (z. B. Browser-Zoom 150 % oder Bildschirmfoto ohne Verkleinern), dann wird alles zuverlässiger erkannt.</div>` : ""}
     <div class="chips" style="padding:0"><button type="button" class="chip" data-all="1">Alle auswählen</button><button type="button" class="chip" data-all="0">Keine</button></div>
     <div id="ws-rows">${draw()}</div>
     <datalist id="known-names">${knownNames().map(n => `<option value="${esc(n)}">`).join("")}</datalist>

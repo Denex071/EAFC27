@@ -3,8 +3,8 @@
 import { mergeWords, buildLines } from "./ocr-lines.js";
 import { parseFrames } from "./parser.js";
 import { grayscale, detailBox, listBox, extract, match, fromHex } from "./chemicons.js";
-import { findRows, findBadge, binaryCrop, rowBoxes, PRED, parseRating, parseCard, listItems, badgeDigits, classifyRating } from "./wishscan.js";
-import { DIGITS } from "./digit-templates.js";
+import { findRows, findBadge, binaryCrop, rowBoxes, nameStart, PRED, parseRating, parseCard, listItems, badgeDigits, classifyRatings } from "./wishscan.js";
+import { DIGIT_SETS } from "./digit-templates.js";
 
 let workerPromise = null;
 let progressFn = () => {};
@@ -241,16 +241,21 @@ export async function scanWishFiles(files, onProgress = () => {}) {
         onProgress(`${label}Liste wird gelesen …`, f / files.length);
         const { lines } = await analyseCanvas(big, {}, [false, true]);
         release(big);
-        const ratings = [], names = [];
+        const badges = rows.map(r => findBadge(d, W, H, r));
+        // Rating: Mustervergleich der Ziffern (Vorlagen-Satz passend zur Bildgröße), sonst Texterkennung
+        const matched = classifyRatings({ false: badges.map(bd => bd ? badgeDigits(d, W, bd) : null), true: badges.map(bd => bd ? badgeDigits(d, W, bd, true) : null) }, DIGIT_SETS);
+        const ratings = [], names = [], prices = [];
         for (let r = 0; r < rows.length; r++) {
           onProgress(`${label}Spieler ${r + 1} von ${rows.length} …`, (f + 0.8 + 0.2 * r / rows.length) / files.length);
-          const badge = findBadge(d, W, H, rows[r]), box = rowBoxes(W, H, rows[r], badge);
-          // Rating: erst Mustervergleich der Ziffern, sonst Texterkennung
-          ratings.push(!badge ? null : classifyRating(badgeDigits(d, W, badge), DIGITS)
+          const badge = badges[r], box = rowBoxes(W, H, rows[r], badge, nameStart(d, W, H, rows[r], badge));
+          ratings.push(!badge ? null : matched[r]
             ?? parseRating(await readCrop(worker, binaryCrop(d, W, box.badge, PRED.digits, 4), "6", "0123456789")));
           names.push(await readCrop(worker, binaryCrop(d, W, box.name, "auto", 4), "7"));
+          prices.push(await readCrop(worker, binaryCrop(d, W, box.price, PRED.priceLum, 8), "7", "0123456789.K"));
         }
-        items.push(...listItems(lines, rows, ratings, W, H, names));
+        // sehr kleine Bilder (Abzeichen unter ~22 px): Ziffern nur wenige Pixel groß → Werte im Prüf-Fenster markieren
+        const bh = badges.filter(Boolean).map(b => b.y1 - b.y0 + 1).sort((a, b) => a - b), small = bh.length && bh[bh.length >> 1] < 22;
+        items.push(...listItems(lines, rows, ratings, W, H, names, prices).map(i => small ? { ...i, small: true } : i));
       } else {
         // Einzelkarte: ganzes Bild lesen
         await worker.setParameters({ tessedit_pageseg_mode: "11", tessedit_char_whitelist: "" });
