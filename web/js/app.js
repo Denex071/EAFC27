@@ -9,7 +9,7 @@ import { matchPlayerName } from "./namematch.js";
 import { PLAYER_NAMES } from "./players.js";
 import { toHex } from "./chemicons.js";
 
-const VERSION = "1.12.0";
+const VERSION = "1.12.1";
 
 // ---------- Einstellungen (pro Gerät) ----------
 const LS = {
@@ -142,10 +142,11 @@ const isWatch = w => w.list === "watch"; // Merkliste: nur gemerkt, zählt nicht
 const sortedWishes = () => S.data.wishes.filter(w => !isWatch(w)).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 const watchList = () => S.data.wishes.filter(isWatch).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 /// Auf welchen Listen steht der Spieler schon? → ["Einkaufsliste", "Merkliste"]
-function listsWith(name, rating, exceptId) {
-  const same = x => x.id !== exceptId && sameName(x.name, name) && (!rating || !x.rating || +x.rating === +rating);
+function listsWith(name, rating, exceptId, special) {
+  const kind = x => special == null || !!x.special === !!special; // Gold/Special nur unterscheiden, wenn bekannt
+  const same = x => x.id !== exceptId && sameName(x.name, name) && (!rating || !x.rating || +x.rating === +rating) && kind(x);
   const out = [];
-  if (restockGroups().some(g => sameName(g.name, name) && (!rating || g.rating === +rating)) || sortedWishes().some(same)) out.push("Einkaufsliste");
+  if (restockGroups().some(g => sameName(g.name, name) && (!rating || g.rating === +rating) && kind(g)) || sortedWishes().some(same)) out.push("Einkaufsliste");
   if (watchList().some(same)) out.push("Merkliste");
   return out;
 }
@@ -1280,17 +1281,30 @@ async function runWishScan(files) {
     hideProgress();
     if (!found.length) return toast("Auf dem Bild wurden keine Spieler erkannt", true);
     const known = knownNames();
-    openWishScan(found.map(f => {
+    const drafts = [];
+    for (const f of found) {
       // eigene Spieler und bekannte EA-FC-Namen bevorzugen („Mossl“ → „Messi“)
       const name = f.name ? matchPlayerName(f.name, known, PLAYER_NAMES) || canonicalName(f.name, known) : "";
       const last = name ? lastCard(name) : null;
-      return { include: !!name, name, rating: f.rating ?? last?.rating ?? "", chem: last?.chem || "Basic", price: f.price ?? "", small: !!f.small };
-    }));
+      const d = { include: !!name, name, rating: f.rating ?? last?.rating ?? "", chem: last?.chem || "Basic", price: f.price ?? "", small: !!f.small };
+      // derselbe Spieler in mehreren Bildern → nur einmal übernehmen (fehlende Werte ergänzen)
+      const twin = name && drafts.find(x => nameKey(x.name) === nameKey(name) && (!x.rating || !d.rating || +x.rating === +d.rating));
+      if (twin) { twin.rating ||= d.rating; twin.price ||= d.price; continue; }
+      drafts.push(d);
+    }
+    openWishScan(drafts);
   } catch (e) { hideProgress(); toast("Erkennung fehlgeschlagen: " + e.message, true); }
 }
 function openWishScan(drafts) {
   let list = "buy";
-  const dupText = d => { const on = d.name ? listsWith(d.name, +d.rating) : []; return on.length ? `<div class="warn">Steht schon auf der ${on.join(" und der ")}.</div>` : ""; };
+  // Hinweise (der Spieler bleibt ausgewählt): schon auf einer Liste, oder Karte liegt gerade auf der Transferliste
+  const tlCount = d => S.data.cards.filter(c => !isSold(c) && sameName(c.name, d.name) && (!d.rating || c.rating === +d.rating) && !!c.special === !!d.special).length;
+  const dupText = d => {
+    if (!d.name) return "";
+    const on = listsWith(d.name, +d.rating, null, !!d.special), tl = tlCount(d);
+    return (on.length ? `<div class="warn">Steht schon auf der ${on.join(" und der ")}.</div>` : "")
+      + (tl ? `<div class="warn"><span class="tag tl">TL</span> ${tl > 1 ? tl + " Karten" : "Karte"} schon im Bestand (gekauft, noch nicht verkauft).</div>` : "");
+  };
   const draw = () => drafts.map((d, i) => `<div class="group ws-row" data-i="${i}">
     <div class="ws-line"><input type="checkbox" data-k="include" ${d.include ? "checked" : ""} aria-label="Übernehmen">
       <input data-k="name" value="${esc(d.name)}" list="known-names" placeholder="Name" aria-label="Name" class="ws-name"></div>
@@ -1312,9 +1326,13 @@ function openWishScan(drafts) {
       Für die Einkaufsliste ist ein Preis nötig, für die Merkliste nicht.</p></div>`;
   const refresh = sheet(`${drafts.length} Spieler erkannt`, body, "Hinzufügen", async () => {
     let added = 0, skipped = 0;
+    // Eine gemeinsame Rückfrage für alle, die schon auf einer Liste stehen
+    const dups = ready().filter(d => listsWith(d.name.trim(), +d.rating, null, !!d.special).length);
+    const names = dups.map(d => `${esc(d.name)} ${d.rating}`), shown = names.slice(0, 8).join(", ") + (names.length > 8 ? ` und ${names.length - 8} weitere` : "");
+    const again = dups.length ? await askYesNo(`${dups.length === 1 ? "Dieser Spieler steht" : `${dups.length} Spieler stehen`} schon auf der Liste: <b>${shown}</b>. Trotzdem ein zweites Mal hinzufügen?`,
+      "Ja, alle", "Nein, nur neue") : true;
     for (const d of ready()) {
-      const on = listsWith(d.name.trim(), +d.rating);
-      if (on.length && !await askYesNo(`<b>${esc(d.name)} ${d.rating}</b> steht schon auf der ${on.join(" und der ")}. Soll der Spieler ein zweites Mal auf die ${list === "watch" ? "Merkliste" : "Einkaufsliste"}?`)) { skipped++; continue; }
+      if (!again && dups.includes(d)) { skipped++; continue; }
       S.saveWish({ id: S.newId(), name: d.name.trim(), rating: +d.rating, chem: d.chem, special: !!d.special, price: parseCoins(d.price) || 0, offer: null, qty: 1, list,
         owner: settings.name, createdAt: Date.now() + added });
       added++;
@@ -1334,7 +1352,7 @@ function openWishScan(drafts) {
     if (k === "name") { const l = lastCard(d.name); if (l) { if (!d.rating) d.rating = l.rating; d.chem = l.chem; } }
     refresh();
   });
-  $("ws-rows").addEventListener("change", e => { if (["chem", "include", "name", "rating"].includes(e.target.dataset.k)) { $("ws-rows").innerHTML = draw(); refresh(); } });
+  $("ws-rows").addEventListener("change", e => { if (["chem", "include", "name", "rating", "special"].includes(e.target.dataset.k)) { $("ws-rows").innerHTML = draw(); refresh(); } });
 }
 
 async function runScan(files) {
